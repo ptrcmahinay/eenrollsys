@@ -284,6 +284,11 @@ function ensure_email_verification_columns(): void
         if (!$stmt || !$stmt->fetch()) {
             $pdo->exec("ALTER TABLE `users` ADD COLUMN `verified_at` TIMESTAMP NULL AFTER `verification_token`");
         }
+
+        $stmt = $pdo->query("SHOW COLUMNS FROM `users` LIKE 'display_name'");
+        if (!$stmt || !$stmt->fetch()) {
+            $pdo->exec("ALTER TABLE `users` ADD COLUMN `display_name` VARCHAR(255) NULL AFTER `email`");
+        }
     } catch (\Throwable $e) {
     }
 }
@@ -309,6 +314,12 @@ function ensure_password_reset_tokens_table(): void
               CONSTRAINT fk_prt_user FOREIGN KEY (user_id) REFERENCES users(users_id) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
         ");
+
+        $stmt = $pdo->query("SHOW COLUMNS FROM `password_reset_tokens` LIKE 'user_id'");
+        if (!$stmt || !$stmt->fetch()) {
+            $pdo->exec("ALTER TABLE `password_reset_tokens` ADD COLUMN `user_id` INT NULL AFTER `id`");
+            $pdo->exec("ALTER TABLE `password_reset_tokens` DROP COLUMN `email`");
+        }
 
         $stmt = $pdo->query("SHOW COLUMNS FROM `password_reset_tokens` LIKE 'used'");
         if (!$stmt || !$stmt->fetch()) {

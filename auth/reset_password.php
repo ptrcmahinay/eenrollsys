@@ -9,25 +9,26 @@ if (current_user() !== null) {
 
 $token = trim((string) ($_GET['token'] ?? ''));
 if ($token === '') {
-    set_flash('error', 'Invalid reset link.');
+    flash('error', 'Invalid reset link.');
     redirect('auth/forgot_password.php');
 }
 
 $resetRow = fetch_one(
-    'SELECT t.user_id, t.expires_at, u.email, u.display_name
+    'SELECT t.user_id, t.expires_at, u.email, COALESCE(s.full_name, u.username, u.email) AS display_name
      FROM password_reset_tokens t
      INNER JOIN users u ON u.users_id = t.user_id
+     LEFT JOIN students s ON s.id = u.student_id
      WHERE t.token = :token AND t.used = 0',
     ['token' => $token]
 );
 
 if ($resetRow === null) {
-    set_flash('error', 'Invalid or already-used reset link.');
+    flash('error', 'Invalid or already-used reset link.');
     redirect('auth/forgot_password.php');
 }
 
 if (strtotime($resetRow['expires_at']) < time()) {
-    set_flash('error', 'This reset link has expired. Please request a new one.');
+    flash('error', 'This reset link has expired. Please request a new one.');
     redirect('auth/forgot_password.php');
 }
 

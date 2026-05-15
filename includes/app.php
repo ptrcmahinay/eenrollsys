@@ -329,7 +329,7 @@ function current_user(): ?array
     $userId = (int) $_SESSION['user_id'];
     $user = fetch_one(
         'SELECT u.users_id, u.username, u.email, u.student_id,
-                COALESCE(s.full_name, st.full_name, u.username, u.email) AS display_name
+                COALESCE(u.display_name, s.full_name, st.full_name, u.username, u.email) AS display_name
          FROM users u
          LEFT JOIN students s ON s.id = u.student_id
          LEFT JOIN staff st ON st.users_id = u.users_id
@@ -1541,14 +1541,14 @@ function upload_syllabus(array $file, int $offeringId): ?string
 
     $maxSize = 5 * 1024 * 1024; // 5 MB
     if ((int) $file['size'] > $maxSize) {
-        set_flash('error', 'Syllabus file must be under 5 MB.');
+        flash('error', 'Syllabus file must be under 5 MB.');
         return null;
     }
 
     $allowed = ['pdf', 'doc', 'docx'];
     $extension = strtolower(pathinfo((string) $file['name'], PATHINFO_EXTENSION));
     if (!in_array($extension, $allowed, true)) {
-        set_flash('error', 'Only PDF, DOC, and DOCX files are allowed.');
+        flash('error', 'Only PDF, DOC, and DOCX files are allowed.');
         return null;
     }
 
@@ -1559,7 +1559,7 @@ function upload_syllabus(array $file, int $offeringId): ?string
         'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     ];
     if (isset($allowedMimes[$extension]) && $mimeType !== $allowedMimes[$extension]) {
-        set_flash('error', 'File content does not match the expected type.');
+        flash('error', 'File content does not match the expected type.');
         return null;
     }
 

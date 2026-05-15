@@ -6,7 +6,7 @@ require_role('cashier');
 
 $requestId = (int) ($_GET['request_id'] ?? 0);
 if ($requestId <= 0) {
-    set_flash('error', 'Invalid request.');
+    flash('error', 'Invalid request.');
     redirect('cashier/payments.php');
 }
 
@@ -27,12 +27,12 @@ $enrollment = fetch_one(
 );
 
 if ($enrollment === null) {
-    set_flash('error', 'Enrollment not found or not yet approved.');
+    flash('error', 'Enrollment not found or not yet approved.');
     redirect('cashier/payments.php');
 }
 
 if ($enrollment['payment_status'] === 'paid' || $enrollment['payment_status'] === 'waived') {
-    set_flash('info', 'This enrollment is already settled.');
+    flash('info', 'This enrollment is already settled.');
     redirect('cashier/receipt.php?request_id=' . $requestId);
 }
 

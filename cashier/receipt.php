@@ -6,7 +6,7 @@ require_role('cashier');
 
 $requestId = (int) ($_GET['request_id'] ?? 0);
 if ($requestId <= 0) {
-    set_flash('error', 'Invalid request.');
+    flash('error', 'Invalid request.');
     redirect('cashier/payments.php');
 }
 
@@ -24,14 +24,15 @@ $enrollment = fetch_one(
 );
 
 if ($enrollment === null) {
-    set_flash('error', 'Enrollment not found.');
+    flash('error', 'Enrollment not found.');
     redirect('cashier/payments.php');
 }
 
 $payments = fetch_all(
-    'SELECT p.*, u.display_name AS cashier_name
+    'SELECT p.*, COALESCE(st.full_name, u.username, u.email) AS cashier_name
      FROM payments p
      LEFT JOIN users u ON u.users_id = p.cashier_id
+     LEFT JOIN staff st ON st.users_id = u.users_id
      WHERE p.request_id = :id
      ORDER BY p.payment_date ASC, p.id ASC',
     ['id' => $requestId]

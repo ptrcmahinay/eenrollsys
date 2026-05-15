@@ -17,7 +17,7 @@ $paymentDate = trim((string) ($_POST['payment_date'] ?? date('Y-m-d')));
 $remarks = trim((string) ($_POST['remarks'] ?? ''));
 
 if ($requestId <= 0 || $amountPaid <= 0) {
-    set_flash('error', 'Enter a valid amount.');
+    flash('error', 'Enter a valid amount.');
     redirect('cashier/process_payment.php?request_id=' . $requestId);
 }
 
@@ -37,12 +37,12 @@ $enrollment = fetch_one(
 );
 
 if ($enrollment === null) {
-    set_flash('error', 'Enrollment not found.');
+    flash('error', 'Enrollment not found.');
     redirect('cashier/payments.php');
 }
 
 if ($enrollment['payment_status'] === 'paid' || $enrollment['payment_status'] === 'waived') {
-    set_flash('error', 'This enrollment is already fully paid or waived.');
+    flash('error', 'This enrollment is already fully paid or waived.');
     redirect('cashier/receipt.php?request_id=' . $requestId);
 }
 
@@ -73,5 +73,5 @@ execute_sql(
     ['status' => $newStatus, 'id' => $requestId]
 );
 
-set_flash('success', 'Payment recorded. ' . ($newStatus === 'paid' ? 'Enrollment is now fully paid.' : 'Remaining balance: ₱' . number_format($newBalance, 2)));
+flash('success', 'Payment recorded. ' . ($newStatus === 'paid' ? 'Enrollment is now fully paid.' : 'Remaining balance: ₱' . number_format($newBalance, 2)));
 redirect('cashier/receipt.php?request_id=' . $requestId);
