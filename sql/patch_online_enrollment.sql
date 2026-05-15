@@ -1,0 +1,2 @@
+-- This project already ships with a full schema in enrollmentsystem.sql.
+-- If you imported an older database, re-import the full SQL file instead of applying partial patches.
