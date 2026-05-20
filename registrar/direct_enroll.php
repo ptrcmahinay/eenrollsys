@@ -293,4 +293,4 @@ document.addEventListener('DOMContentLoaded', function() {
 .kv-list .v{font-size:13px;font-weight:600;text-align:right}
 </style>
 <?php
-render_page('Direct Enrollment', 'Direct Enrollment', (string) ob_get_clean());
+render_page('Direct Enrollment', 'Direct Enroll', (string) ob_get_clean());

@@ -53,12 +53,13 @@ if ($offeringId > 0) {
     }
 }
 
+$termDeadline = current_term();
 ob_start();
 ?>
 <div class="page-header">
     <div>
         <h1>Student Lists and Final Grades</h1>
-        <p>View handled subject student lists and input final grades.</p>
+        <p>View handled subject student lists and input final grades. <?= deadline_badge('grade_deadline', $termDeadline) ?></p>
     </div>
     <div class="actions-row">
         <a class="btn secondary" href="<?= h(app_url('instructor/download_students.php?offering_id=' . $offeringId)) ?>">Download CSV</a>

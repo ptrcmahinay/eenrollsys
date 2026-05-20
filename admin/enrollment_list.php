@@ -273,4 +273,4 @@ $exportQs = http_build_query(array_filter([
     <?php endif; ?>
 </div>
 <?php
-render_page('Enrollment Masterlist', 'Enrollment Masterlist', (string) ob_get_clean());
+render_page('Enrollment Masterlist', 'Enrollment List', (string) ob_get_clean());

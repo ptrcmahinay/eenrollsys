@@ -790,7 +790,7 @@ function updateCount() {
 
 <?php
 $content = ob_get_clean();
-render_page('Subject Offerings', 'Offerings', (string) $content, [
+render_page('Subject Offerings', 'Subject Offerings', (string) $content, [
     'modals' => []
 ]);
 ?>

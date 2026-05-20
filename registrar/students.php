@@ -266,7 +266,8 @@ $addStudentModal = '
                 <?php foreach ($rows as $row): ?>
                     <?php $financial = financial_profile($row, $term ?? null); ?>
                     <?php if ($filters['ra10931'] !== '' && $financial['status'] !== $filters['ra10931']) { continue; } ?>
-                    <tr data-dt-row-id="<?= h((string)$row['id']) ?>">
+                    <tr data-dt-row-id="<?= h((string)$row['id']) ?>"
+                        data-href="<?= h(app_url('registrar/student_detail.php?student_id=' . $row['id'])) ?>">
                         <td><input type="checkbox" class="dt-bulk-row" value="<?= h((string)$row['id']) ?>" aria-label="Select row"></td>
                         <td><?= h($row['student_number']) ?></td>
                         <td><?= h($row['full_name']) ?></td>

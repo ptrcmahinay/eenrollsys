@@ -26,6 +26,35 @@ if (is_post()) {
         }
     }
 
+    if ($action === 'update_department') {
+        $deptId = (int) ($_POST['dept_id'] ?? 0);
+        $code   = trim($_POST['department_code'] ?? '');
+        $name   = trim($_POST['department_name'] ?? '');
+        $chairId = !empty($_POST['chair_id']) ? (int) $_POST['chair_id'] : null;
+
+        if ($deptId <= 0 || $code === '' || $name === '') {
+            flash('error', 'Invalid department data.');
+        } else {
+            execute_sql(
+                'UPDATE departments SET department_code = :code, department_name = :name WHERE dept_id = :id',
+                ['code' => $code, 'name' => $name, 'id' => $deptId]
+            );
+
+            if ($chairId !== null) {
+                execute_sql(
+                    'UPDATE staff SET dept_id = NULL WHERE dept_id = :dept_id AND staff_id != :chair_id',
+                    ['dept_id' => $deptId, 'chair_id' => $chairId]
+                );
+                execute_sql(
+                    'UPDATE staff SET dept_id = :dept_id WHERE staff_id = :chair_id',
+                    ['dept_id' => $deptId, 'chair_id' => $chairId]
+                );
+            }
+
+            flash('success', 'Department updated.');
+        }
+    }
+
     if ($action === 'create_section') {
         $programId  = (int) ($_POST['program_id']   ?? 0);
         $yearLevel  = (int) ($_POST['year_level']   ?? 1);
@@ -52,8 +81,11 @@ if (is_post()) {
     if ($action === 'delete_department') {
         $deptId = (int) ($_POST['dept_id'] ?? 0);
         if ($deptId > 0) {
-            soft_delete('departments', 'dept_id', $deptId);
-            flash('success', 'Department marked inactive.');
+            if (soft_delete('departments', 'dept_id', $deptId)) {
+                flash('success', 'Department marked inactive.');
+            } else {
+                flash('error', 'Failed to delete department.');
+            }
         }
     }
 
@@ -69,8 +101,36 @@ if (is_post()) {
     if ($action === 'delete_section') {
         $sectionId = (int) ($_POST['section_id'] ?? 0);
         if ($sectionId > 0) {
-            soft_delete('sections', 'id', $sectionId);
-            flash('success', 'Section marked inactive.');
+            if (soft_delete('sections', 'id', $sectionId)) {
+                flash('success', 'Section marked inactive.');
+            } else {
+                flash('error', 'Failed to delete section.');
+            }
+        }
+    }
+
+    if ($action === 'update_section') {
+        $sectionId   = (int) ($_POST['section_id'] ?? 0);
+        $programId   = (int) ($_POST['program_id'] ?? 0);
+        $yearLevel   = (int) ($_POST['year_level'] ?? 1);
+        $sectionName = trim($_POST['section_name'] ?? '');
+        $maxSlots    = ($_POST['max_slots'] ?? '') !== '' ? (int) $_POST['max_slots'] : null;
+
+        if ($sectionId <= 0 || $programId <= 0 || $sectionName === '') {
+            flash('error', 'Program, section name, and section ID are required.');
+        } else {
+            execute_sql(
+                'UPDATE sections SET program_id = :program_id, year_level = :year_level,
+                 section_name = :section_name, max_slots = :max_slots WHERE id = :id',
+                [
+                    'program_id'   => $programId,
+                    'year_level'   => $yearLevel,
+                    'section_name' => $sectionName,
+                    'max_slots'    => $maxSlots,
+                    'id'           => $sectionId,
+                ]
+            );
+            flash('success', 'Section updated.');
         }
     }
 
@@ -219,6 +279,42 @@ $sectionModalBody = '
     </div>
 </form>';
 
+$editSectionModalBody = '
+<form method="post">
+    <input type="hidden" name="action" value="update_section">
+    <input type="hidden" name="section_id" id="edit_section_id">
+
+    <div class="form-grid cols-3">
+        <div>
+            <label>Program</label>
+            <select name="program_id" id="edit_section_program_id" required>
+                <option value="">— select —</option>
+                ' . $sectionOptions . '
+            </select>
+        </div>
+        <div>
+            <label>Year Level</label>
+            <select name="year_level" id="edit_section_year_level">
+                <option value="1">1st Year</option>
+                <option value="2">2nd Year</option>
+                <option value="3">3rd Year</option>
+                <option value="4">4th Year</option>
+            </select>
+        </div>
+        <div>
+            <label>Section Name</label>
+            <input type="text" name="section_name" id="edit_section_name" required maxlength="10">
+        </div>
+        <div>
+            <label>Max Slots</label>
+            <input type="number" name="max_slots" id="edit_section_max_slots" placeholder="e.g. 40" min="1">
+        </div>
+    </div>
+    <div class="form-actions">
+        <button class="btn" type="submit">Save Changes</button>
+    </div>
+</form>';
+
 ob_start();
 ?>
 
@@ -229,7 +325,7 @@ ob_start();
     </div>
 </div>
 
-<div class="grid cols-2" style="align-items: start;">
+<div class="grid cols-1" style="align-items: start;">
 
     <!-- ── DEPARTMENTS ── -->
     <div class="card">
@@ -242,7 +338,6 @@ ob_start();
                 <table>
                     <thead>
                         <tr>
-                            <th data-dt-no-sort data-dt-no-export><input type="checkbox" class="dt-bulk-select-all" aria-label="Select all"></th>
                             <th data-dt-key="code">Code</th>
                             <th data-dt-key="name">Department</th>
                             <th data-dt-key="chair">Chair</th>
@@ -255,8 +350,8 @@ ob_start();
                         <tr><td colspan="6" class="empty">No departments yet.</td></tr>
                     <?php endif; ?>
                     <?php foreach ($departments as $dept): ?>
-                        <tr data-dt-row-id="<?= h((string)$dept['dept_id']) ?>" class="table-row">
-                            <td><input type="checkbox" class="dt-bulk-row" value="<?= h((string)$dept['dept_id']) ?>" aria-label="Select row"></td>
+                        <tr data-dt-row-id="<?= h((string)$dept['dept_id']) ?>" class="table-row"
+                            data-href="<?= h(app_url('registrar/department_detail.php?id=' . $dept['dept_id'])) ?>">
                             <td data-label="Code">
                                 <div class="table-cell-primary">
                                     <div class="cell-icon dept-icon"><span class="material-symbols-outlined">domain</span></div>
@@ -333,7 +428,8 @@ ob_start();
                         <tr><td colspan="7" class="empty">No sections yet.</td></tr>
                     <?php endif; ?>
                     <?php foreach ($sections as $sec): ?>
-                        <tr data-dt-row-id="<?= h((string)$sec['id']) ?>" class="table-row">
+                        <tr data-dt-row-id="<?= h((string)$sec['id']) ?>" class="table-row"
+                            data-href="<?= h(app_url('registrar/section_detail.php?id=' . $sec['id'])) ?>">
                             <td><input type="checkbox" class="dt-bulk-row" value="<?= h((string)$sec['id']) ?>" aria-label="Select row"></td>
                             <td data-label="Section">
                                 <div class="table-cell-primary">
@@ -363,6 +459,15 @@ ob_start();
                                        href="<?= h(app_url('registrar/section_detail.php?id=' . $sec['id'])) ?>">
                                         <span class="material-symbols-outlined">visibility</span>
                                     </a>
+                                    <button class="action-btn" type="button" title="Edit" aria-label="Edit"
+                                            data-open="modal-edit-section"
+                                            data-id="<?= h($sec['id']) ?>"
+                                            data-program-id="<?= h($sec['program_id']) ?>"
+                                            data-year-level="<?= h($sec['year_level']) ?>"
+                                            data-section-name="<?= h($sec['section_name']) ?>"
+                                            data-max-slots="<?= h($sec['max_slots'] ?? '') ?>">
+                                        <span class="material-symbols-outlined">edit</span>
+                                    </button>
                                     <form class="inline-form" method="post"
                                           onsubmit="return confirm('Mark this section as inactive?');" style="display:inline;">
                                         <input type="hidden" name="action" value="delete_section">
@@ -384,17 +489,27 @@ ob_start();
 </div>
 <script>
 document.addEventListener('click', function(e) {
-    const btn = e.target.closest('[data-open="modal-edit-dept"]');
-    if (!btn) return;
+    const deptBtn = e.target.closest('[data-open="modal-edit-dept"]');
+    if (deptBtn) {
+        document.getElementById('edit_dept_id').value = deptBtn.dataset.id;
+        document.getElementById('edit_department_code').value = deptBtn.dataset.code;
+        document.getElementById('edit_department_name').value = deptBtn.dataset.name;
+    }
 
-    document.getElementById('edit_dept_id').value = btn.dataset.id;
-    document.getElementById('edit_department_code').value = btn.dataset.code;
-    document.getElementById('edit_department_name').value = btn.dataset.name;
+    const secBtn = e.target.closest('[data-open="modal-edit-section"]');
+    if (secBtn) {
+        document.getElementById('edit_section_id').value = secBtn.dataset.id;
+        document.getElementById('edit_section_program_id').value = secBtn.dataset.programId;
+        document.getElementById('edit_section_year_level').value = secBtn.dataset.yearLevel;
+        document.getElementById('edit_section_name').value = secBtn.dataset.sectionName;
+        document.getElementById('edit_section_max_slots').value = secBtn.dataset.maxSlots || '';
+    }
 });
 </script>
-<?= render_modal('modal-new-dept',    'New Department', $deptModalBody) ?>
-<?= render_modal('modal-new-section', 'New Section',    $sectionModalBody) ?>
-<?= render_modal('modal-edit-dept', 'Edit Department', $editDeptModalBody) ?>
+<?= render_modal('modal-new-dept',      'New Department',    $deptModalBody) ?>
+<?= render_modal('modal-new-section',   'New Section',       $sectionModalBody) ?>
+<?= render_modal('modal-edit-dept',     'Edit Department',   $editDeptModalBody) ?>
+<?= render_modal('modal-edit-section',  'Edit Section',      $editSectionModalBody) ?>
 
 <?php
 $deptStyles = '<style>

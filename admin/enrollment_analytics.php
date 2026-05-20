@@ -215,4 +215,4 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 <?php
-render_page('Enrollment Analytics', 'Analytics', (string) ob_get_clean());
+render_page('Enrollment Analytics', 'Enrollment Analytics', (string) ob_get_clean());

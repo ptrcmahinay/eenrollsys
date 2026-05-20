@@ -62,7 +62,6 @@ ob_start();
             <table>
                 <thead>
                     <tr>
-                        <th data-dt-no-sort data-dt-no-export><input type="checkbox" class="dt-bulk-select-all" aria-label="Select all"></th>
                         <th data-dt-key="name">Name</th>
                         <th data-dt-key="username">Username</th>
                         <th data-dt-key="email">Email</th>
@@ -73,8 +72,8 @@ ob_start();
                 </thead>
                 <tbody>
                 <?php foreach ($users as $user): ?>
-                    <tr data-dt-row-id="<?= h((string)$user['users_id']) ?>">
-                        <td><input type="checkbox" class="dt-bulk-row" value="<?= h((string)$user['users_id']) ?>" aria-label="Select row"></td>
+                    <tr data-dt-row-id="<?= h((string)$user['users_id']) ?>"
+                        data-href="<?= h(app_url('includes/detail.php?type=user&id=' . $user['users_id'])) ?>">
                         <td><?= h($user['display_name']) ?></td>
                         <td><?= h($user['username']) ?></td>
                         <td><?= h($user['email']) ?></td>

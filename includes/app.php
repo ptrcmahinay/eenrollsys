@@ -22,6 +22,8 @@ function db(): PDO
         ensure_notifications_table();
         ensure_email_verification_columns();
         ensure_fee_items_table();
+        ensure_curriculum_columns();
+        ensure_student_subjects_columns();
     }
     return $pdo;
 }

@@ -17,15 +17,15 @@ $summary = fetch_one(
      WHERE workflow_status = "registrar_approved"'
 );
 
-$recentPayments = fetch_all(
-    'SELECT p.amount_paid, p.or_number, p.payment_date, p.payment_method,
-            s.student_number, s.full_name, er.payment_status
-     FROM payments p
-     INNER JOIN students s ON s.id = p.student_id
-     INNER JOIN enrollment_requests er ON er.id = p.request_id
-     ORDER BY p.created_at DESC
-     LIMIT 10'
-);
+// $recentPayments = fetch_all(
+//     'SELECT p.amount AS amount_paid, p.reference_number AS or_number, p.payment_date, p.payment_method,
+//             s.student_number, s.full_name, er.payment_status
+//      FROM payments p
+//      INNER JOIN students s ON s.id = p.student_id
+//      INNER JOIN enrollment_requests er ON er.id = p.request_id
+//      ORDER BY p.created_at DESC
+//      LIMIT 10'
+// );
 
 ob_start();
 ?>

@@ -4,9 +4,27 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/app.php';
 require_once __DIR__ . '/../includes/components/modal.php';
 require_once __DIR__ . '/../includes/components/forms.php';
-$currentUser = require_role(['admin', 'registrar', 'chair', 'instructor']);
+$currentUser = require_role(['admin', 'registrar', 'chair', 'instructor', 'adviser', 'student']);
 $role = $currentUser['role'] ?? '';
 $canManage = in_array($role, ['admin', 'registrar'], true);
+
+$studentContextId = 0;
+if ($role === 'student') {
+    $stu = current_student();
+    $studentContextId = $stu ? (int) $stu['id'] : 0;
+} elseif (in_array($role, ['admin', 'registrar', 'adviser'], true)) {
+    $studentContextId = (int) ($_GET['student_id'] ?? 0);
+}
+if ($role === 'adviser' && $studentContextId > 0) {
+    $staff = current_staff();
+    $advisee = fetch_one(
+        'SELECT s.id FROM students s
+         INNER JOIN sections sec ON sec.id = s.section_id
+         WHERE sec.adviser_id = :aid AND s.id = :sid',
+        ['aid' => (int) ($staff['staff_id'] ?? 0), 'sid' => $studentContextId]
+    );
+    if (!$advisee) $studentContextId = 0;
+}
 
 $deptScopeId = 0;
 if (!$canManage) {
@@ -27,11 +45,12 @@ if (is_post()) {
         $deptId  = (int)   ($_POST['department_id'] ?? 0);
         $code    = trim($_POST['program_code']  ?? '');
         $name    = trim($_POST['program_name']  ?? '');
+        $major   = trim($_POST['program_major'] ?? '');
         if ($deptId > 0 && $code !== '' && $name !== '') {
             execute_sql(
-                'INSERT INTO programs (department_id, program_code, program_name, status, created_at)
-                 VALUES (:dept, :code, :name, "active", NOW())',
-                ['dept' => $deptId, 'code' => $code, 'name' => $name]
+                'INSERT INTO programs (department_id, program_code, program_name, program_major, status, created_at)
+                 VALUES (:dept, :code, :name, :major, "active", NOW())',
+                ['dept' => $deptId, 'code' => $code, 'name' => $name, 'major' => $major !== '' ? $major : null]
             );
             flash('success', 'Program created.');
         } else {
@@ -44,11 +63,12 @@ if (is_post()) {
         $deptId  = (int) ($_POST['department_id'] ?? 0);
         $code    = trim($_POST['program_code']  ?? '');
         $name    = trim($_POST['program_name']  ?? '');
+        $major   = trim($_POST['program_major'] ?? '');
         if ($progId > 0 && $deptId > 0 && $code !== '' && $name !== '') {
             execute_sql(
-                'UPDATE programs SET department_id = :dept, program_code = :code, program_name = :name
+                'UPDATE programs SET department_id = :dept, program_code = :code, program_name = :name, program_major = :major
                  WHERE programs_id = :id',
-                ['dept' => $deptId, 'code' => $code, 'name' => $name, 'id' => $progId]
+                ['dept' => $deptId, 'code' => $code, 'name' => $name, 'major' => $major !== '' ? $major : null, 'id' => $progId]
             );
             flash('success', 'Program updated.');
         } else {
@@ -75,29 +95,38 @@ if (is_post()) {
 
     /* ── Subject CRUD ── */
     if ($action === 'add_subject') {
-        $code = trim($_POST['subject_code'] ?? '');
-        $desc = trim($_POST['subject_description'] ?? '');
-        $units = (float) ($_POST['units'] ?? 3);
+        $code     = trim($_POST['subject_code'] ?? '');
+        $desc     = trim($_POST['subject_description'] ?? '');
+        $units    = (float) ($_POST['units'] ?? 3);
+        $lecCredit = (float) ($_POST['lec_credit'] ?? 0);
+        $labCredit = (float) ($_POST['lab_credit'] ?? 0);
+        $lecHours  = (float) ($_POST['lec_hours'] ?? 0);
+        $labHours  = (float) ($_POST['lab_hours'] ?? 0);
         if ($code !== '' && $desc !== '') {
             execute_sql(
-                'INSERT INTO subjects (subject_code, subject_description, units, created_at)
-                 VALUES (:code, :desc, :units, NOW())',
-                ['code' => $code, 'desc' => $desc, 'units' => $units]
+                'INSERT INTO subjects (subject_code, subject_description, units, lec_credit, lab_credit, lec_hours, lab_hours, created_at)
+                 VALUES (:code, :desc, :units, :lc, :lb, :lh, :lbh, NOW())',
+                ['code' => $code, 'desc' => $desc, 'units' => $units, 'lc' => $lecCredit, 'lb' => $labCredit, 'lh' => $lecHours, 'lbh' => $labHours]
             );
             flash('success', 'Subject created.');
         }
     }
 
     if ($action === 'update_subject') {
-        $sid   = (int) ($_POST['subject_id'] ?? 0);
-        $code  = trim($_POST['subject_code'] ?? '');
-        $desc  = trim($_POST['subject_description'] ?? '');
-        $units = (float) ($_POST['units'] ?? 3);
+        $sid       = (int) ($_POST['subject_id'] ?? 0);
+        $code      = trim($_POST['subject_code'] ?? '');
+        $desc      = trim($_POST['subject_description'] ?? '');
+        $units     = (float) ($_POST['units'] ?? 3);
+        $lecCredit = (float) ($_POST['lec_credit'] ?? 0);
+        $labCredit = (float) ($_POST['lab_credit'] ?? 0);
+        $lecHours  = (float) ($_POST['lec_hours'] ?? 0);
+        $labHours  = (float) ($_POST['lab_hours'] ?? 0);
         if ($sid > 0 && $code !== '' && $desc !== '') {
             execute_sql(
-                'UPDATE subjects SET subject_code = :code, subject_description = :desc, units = :units
+                'UPDATE subjects SET subject_code = :code, subject_description = :desc, units = :units,
+                 lec_credit = :lc, lab_credit = :lb, lec_hours = :lh, lab_hours = :lbh
                  WHERE subject_id = :id',
-                ['code' => $code, 'desc' => $desc, 'units' => $units, 'id' => $sid]
+                ['code' => $code, 'desc' => $desc, 'units' => $units, 'lc' => $lecCredit, 'lb' => $labCredit, 'lh' => $lecHours, 'lbh' => $labHours, 'id' => $sid]
             );
             flash('success', 'Subject updated.');
         }
@@ -109,6 +138,30 @@ if (is_post()) {
             execute_sql('UPDATE subjects SET status = "inactive" WHERE subject_id = :id', ['id' => $sid]);
             flash('success', 'Subject marked inactive.');
         }
+    }
+
+    if ($action === 'bulk_update_subjects') {
+        $subjectIds = $_POST['subject_ids'] ?? [];
+        $lecCredits = $_POST['lec_credit'] ?? [];
+        $labCredits = $_POST['lab_credit'] ?? [];
+        $lecHours   = $_POST['lec_hours']   ?? [];
+        $labHours   = $_POST['lab_hours']   ?? [];
+        $updated = 0;
+        foreach ($subjectIds as $sid) {
+            $sid = (int) $sid;
+            if ($sid <= 0) continue;
+            $lc = (float) ($lecCredits[$sid] ?? 0);
+            $lb = (float) ($labCredits[$sid] ?? 0);
+            $lh = (float) ($lecHours[$sid]   ?? 0);
+            $lbh = (float) ($labHours[$sid]  ?? 0);
+            execute_sql(
+                'UPDATE subjects SET lec_credit = :lc, lab_credit = :lb, lec_hours = :lh, lab_hours = :lbh WHERE subject_id = :id',
+                ['lc' => $lc, 'lb' => $lb, 'lh' => $lh, 'lbh' => $lbh, 'id' => $sid]
+            );
+            $updated++;
+        }
+        if ($updated > 0) flash('success', "$updated subject(s) updated.");
+        else flash('error', 'No subjects updated.');
     }
 
     /* ── Curriculum CRUD ── */
@@ -274,10 +327,16 @@ if (is_post()) {
    Data
    ══════════════════════════════════════════════════════════════════════════ */
 $selectedProgramId = (int) ($_GET['program_id'] ?? 0);
+if ($selectedProgramId === 0 && $studentContextId > 0) {
+    $ctxStudent = fetch_one('SELECT program_id FROM students WHERE id = :id', ['id' => $studentContextId]);
+    if ($ctxStudent) {
+        $selectedProgramId = (int) $ctxStudent['program_id'];
+    }
+}
 
 $departments = fetch_all('SELECT dept_id, department_code, department_name FROM departments ORDER BY department_code');
 $programs = fetch_all(
-    'SELECT p.programs_id, p.program_code, p.program_name, p.status,
+    'SELECT p.programs_id, p.program_code, p.program_name, p.program_major, p.status,
             d.department_code, d.department_name,
             COUNT(DISTINCT pc.curriculum_id) AS subject_count
      FROM programs p
@@ -286,7 +345,7 @@ $programs = fetch_all(
      GROUP BY p.programs_id
      ORDER BY d.department_code, p.program_code'
 );
-$subjects = fetch_all('SELECT subject_id, subject_code, subject_description, units FROM subjects ORDER BY subject_code');
+$subjects = fetch_all('SELECT subject_id, subject_code, subject_description, units, lec_credit, lab_credit, lec_hours, lab_hours FROM subjects ORDER BY subject_code');
 
 $curriculum = [];
 $recentOfferings = [];
@@ -300,21 +359,27 @@ if ($selectedProgramId > 0) {
         ['id' => $selectedProgramId]
     );
 
-    $curriculum = fetch_all(
-        'SELECT pc.curriculum_id, pc.program_id, pc.subject_id, pc.year_level, pc.semester, pc.curriculum_label, pc.standing,
+    $curriculumSql = 'SELECT pc.curriculum_id, pc.program_id, pc.subject_id, pc.year_level, pc.semester, pc.curriculum_label, pc.standing,
                 pc.prerequisite_subject_id, pc.prerequisite_subject_2_id, pc.prerequisite_subject_3_id,
-                sub.subject_code, sub.subject_description, sub.units, p.program_code,
-                pre1.subject_code AS prereq1_code, pre2.subject_code AS prereq2_code, pre3.subject_code AS prereq3_code
-         FROM program_curriculum pc
+                sub.subject_code, sub.subject_description, sub.units, sub.lec_credit, sub.lab_credit, sub.lec_hours, sub.lab_hours, p.program_code,
+                pre1.subject_code AS prereq1_code, pre2.subject_code AS prereq2_code, pre3.subject_code AS prereq3_code';
+    $curriculumJoin = '';
+    $curriculumParams = ['pid' => $selectedProgramId];
+    if ($studentContextId > 0) {
+        $curriculumSql .= ', ss.final_grade, ss.remarks';
+        $curriculumJoin = ' LEFT JOIN student_subjects ss ON ss.subject_id = pc.subject_id AND ss.student_id = :sid';
+        $curriculumParams['sid'] = $studentContextId;
+    }
+    $curriculumSql .= ' FROM program_curriculum pc
          INNER JOIN subjects sub ON sub.subject_id = pc.subject_id
          INNER JOIN programs p ON p.programs_id = pc.program_id
          LEFT JOIN subjects pre1 ON pre1.subject_id = pc.prerequisite_subject_id
          LEFT JOIN subjects pre2 ON pre2.subject_id = pc.prerequisite_subject_2_id
-         LEFT JOIN subjects pre3 ON pre3.subject_id = pc.prerequisite_subject_3_id
-         WHERE pc.program_id = :pid
-         ORDER BY CAST(pc.year_level AS UNSIGNED), FIELD(pc.semester, "1st", "2nd", "mid"), sub.subject_code',
-        ['pid' => $selectedProgramId]
-    );
+         LEFT JOIN subjects pre3 ON pre3.subject_id = pc.prerequisite_subject_3_id'
+         . $curriculumJoin .
+         ' WHERE pc.program_id = :pid
+         ORDER BY CAST(pc.year_level AS UNSIGNED), FIELD(pc.semester, "1st", "2nd", "mid"), sub.subject_code';
+    $curriculum = fetch_all($curriculumSql, $curriculumParams);
 }
 $grouped = [];
 foreach ($curriculum as $line) {
@@ -355,7 +420,7 @@ ob_start();
     <?php if ($canManage): ?>
     <div class="actions-row">
         <button class="btn" data-open="addProgramModal">Add Program</button>
-        <button class="btn" data-open="editProgramModal">Edit Program</button>
+
         <button class="btn secondary" data-open="addSubjectModal">Add Subject</button>
         <button class="btn secondary" data-open="editSubjectModal">Edit Subject</button>
     </div>
@@ -383,10 +448,11 @@ ob_start();
                 <tr><td colspan="7" style="text-align:center;color:var(--muted);">No programs yet.</td></tr>
             <?php endif; ?>
             <?php foreach ($programs as $prog): ?>
-                <tr data-dt-row-id="<?= h((string)$prog['programs_id']) ?>">
+                <tr data-dt-row-id="<?= h((string)$prog['programs_id']) ?>"
+                    data-href="<?= h(app_url('registrar/curriculum.php?program_id=' . $prog['programs_id'])) ?>">
                     <td><input type="checkbox" class="dt-bulk-row" value="<?= h((string)$prog['programs_id']) ?>" aria-label="Select row"></td>
                     <td data-label="Code"><strong style="color:var(--primary);"><?= h($prog['program_code']) ?></strong></td>
-                    <td data-label="Name"><?= h($prog['program_name']) ?></td>
+                    <td data-label="Name"><?= h($prog['program_name']) ?><?= $prog['program_major'] ? ' <span style="font-size:11px;color:var(--muted);">— ' . h($prog['program_major']) . '</span>' : '' ?></td>
                     <td data-label="Department"><?= h($prog['department_code'] . ' — ' . $prog['department_name']) ?></td>
                     <td data-label="Subjects"><span class="badge info"><?= (int) $prog['subject_count'] ?></span></td>
                     <td data-label="Status"><span class="badge <?= $prog['status'] === 'active' ? 'success' : 'danger' ?>"><?= h(ucfirst($prog['status'] ?? 'active')) ?></span></td>
@@ -401,6 +467,7 @@ ob_start();
                                     "id"=>$prog["programs_id"],
                                     "code"=>$prog["program_code"],
                                     "name"=>$prog["program_name"],
+                                    "major"=>$prog["program_major"] ?? "",
                                     "dept"=>(string)($prog["department_id"] ?? "")
                                 ], JSON_HEX_APOS|JSON_HEX_QUOT) ?>);'>
                                 <span class="material-symbols-outlined">edit</span>
@@ -435,12 +502,27 @@ ob_start();
             <p>
                 <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">apartment</span>
                 <?= h(($selectedProgram['department_code'] ?? '') . ' — ' . ($selectedProgram['department_name'] ?? '')) ?>
+                <?php if (!empty($selectedProgram['program_major'])): ?>
+                &middot; <strong><?= h($selectedProgram['program_major']) ?></strong>
+                <?php endif; ?>
             </p>
         </div>
     </div>
-    <?php if ($canManage): ?>
+    <?php if ($studentContextId > 0): ?>
+    <?php $ctxStudent = fetch_one('SELECT id, full_name, student_number, year_level FROM students WHERE id = :id', ['id' => $studentContextId]); ?>
+    <?php if ($ctxStudent): ?>
+    <div class="card" style="padding:12px 16px;margin-bottom:16px;background:var(--surface2);">
+        <strong>Student:</strong> <?= h($ctxStudent['full_name']) ?>
+        &middot; <?= h($ctxStudent['student_number']) ?>
+        &middot; Year <?= h((string)$ctxStudent['year_level']) ?>
+        <a href="<?= h(app_url('registrar/curriculum.php?program_id=' . $selectedProgramId)) ?>" style="margin-left:12px;font-size:12px;">Clear</a>
+    </div>
+    <?php endif; ?>
+<?php endif; ?>
+<?php if ($canManage && $studentContextId === 0): ?>
     <div class="actions-row">
         <button class="btn secondary" data-open="subjectModal">Add Subject</button>
+        <button class="btn secondary" data-open="manageSubjectModal">Manage Subjects</button>
         <button class="btn" data-open="curriculumModal">Add Curriculum Line</button>
         <button class="btn secondary" data-open="importModal">Import CSV</button>
         <a class="btn secondary" href="<?= h(app_url('registrar/curriculum_export.php?program_id=' . $selectedProgramId . '&format=csv')) ?>">Export CSV</a>
@@ -495,70 +577,102 @@ ob_start();
             <span style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;"><?= $semLabel ?></span>
             <span class="badge info" style="font-size:10px;"><?= h((string) $semUnits) ?> units</span>
         </div>
+        <div class="dt" data-dt-page-size="50">
         <div class="table-wrap">
             <table>
                 <thead>
                     <tr>
-                        <th>Code</th>
-                        <th>Description</th>
-                        <th>Units</th>
-                        <th>Prerequisites</th>
-                        <th>Standing</th>
-                        <th>Curriculum</th>
-                        <?php if ($canManage): ?><th>Actions</th><?php endif; ?>
+                        <th data-dt-key="code">Code</th>
+                        <th data-dt-key="desc">Description</th>
+                        <th data-dt-key="units">Units</th>
+                        <th data-dt-key="lec" data-dt-filter="select">Lec Cr</th>
+                        <th data-dt-key="lab" data-dt-filter="select">Lab Cr</th>
+                        <th data-dt-key="lech">Lec Hrs</th>
+                        <th data-dt-key="labh">Lab Hrs</th>
+                        <th data-dt-key="prereq">Prerequisites</th>
+                        <th data-dt-key="standing" data-dt-filter="select">Standing</th>
+                        <th data-dt-key="curr">Curriculum</th>
+                        <?php if ($studentContextId > 0): ?>
+                        <th data-dt-key="grade" data-dt-filter="select">Grade</th>
+                        <th data-dt-key="remarks" data-dt-filter="select">Remarks</th>
+                        <?php endif; ?>
+                        <?php if ($canManage && $studentContextId === 0): ?><th data-dt-no-sort data-dt-no-export>Actions</th><?php endif; ?>
                     </tr>
                 </thead>
                 <tbody>
                 <?php foreach ($lines as $line): ?>
-                    <?php
-                    $prereqs = [];
-                    if ($line['prereq1_code'] !== null) $prereqs[] = $line['prereq1_code'];
-                    if ($line['prereq2_code'] !== null) $prereqs[] = $line['prereq2_code'];
-                    if ($line['prereq3_code'] !== null) $prereqs[] = $line['prereq3_code'];
-                    $prereqDisplay = count($prereqs) > 0 ? implode(', ', $prereqs) : '';
-                    ?>
-                    <tr>
-                        <td><strong><?= h($line['subject_code']) ?></strong></td>
-                        <td><?= h($line['subject_description']) ?></td>
-                        <td><?= h((string) $line['units']) ?></td>
-                        <td>
-                            <?php if ($prereqDisplay !== ''): ?>
-                                <span class="badge warning"><?= h($prereqDisplay) ?></span>
-                            <?php else: ?>
-                                <span style="color:var(--muted);">—</span>
+                        <?php
+                        $prereqs = [];
+                        if ($line['prereq1_code'] !== null) $prereqs[] = $line['prereq1_code'];
+                        if ($line['prereq2_code'] !== null) $prereqs[] = $line['prereq2_code'];
+                        if ($line['prereq3_code'] !== null) $prereqs[] = $line['prereq3_code'];
+                        $prereqDisplay = count($prereqs) > 0 ? implode(', ', $prereqs) : '';
+                        ?>
+                        <tr>
+                            <td><strong><?= h($line['subject_code']) ?></strong></td>
+                            <td><?= h($line['subject_description']) ?></td>
+                            <td><?= h((string) $line['units']) ?></td>
+                            <td><?= h((string) ($line['lec_credit'] ?? 0)) ?></td>
+                            <td><?= h((string) ($line['lab_credit'] ?? 0)) ?></td>
+                            <td><?= h((string) ($line['lec_hours'] ?? 0)) ?></td>
+                            <td><?= h((string) ($line['lab_hours'] ?? 0)) ?></td>
+                            <td>
+                                <?php if ($prereqDisplay !== ''): ?>
+                                    <span class="badge warning"><?= h($prereqDisplay) ?></span>
+                                <?php else: ?>
+                                    <span style="color:var(--muted);">—</span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php if ($line['standing'] !== null && $line['standing'] !== ''): ?>
+                                    <span class="badge"><?= h($line['standing']) ?></span>
+                                <?php else: ?>
+                                    <span style="color:var(--muted);">—</span>
+                                <?php endif; ?>
+                            </td>
+                            <td style="font-size:12px;color:var(--muted);"><?= h($line['curriculum_label']) ?></td>
+                            <?php if ($studentContextId > 0): ?>
+                            <td>
+                                <?php $g = $line['final_grade'] ?? null; ?>
+                                <?php if ($g !== null && $g !== ''): ?>
+                                    <span class="badge <?= grade_is_passing($g) ? 'success' : 'danger' ?>"><?= h($g) ?></span>
+                                <?php else: ?>
+                                    <span style="color:var(--muted);">—</span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php $r = $line['remarks'] ?? null; ?>
+                                <?php if ($r !== null && $r !== ''): ?>
+                                    <?= h($r) ?>
+                                <?php else: ?>
+                                    <span style="color:var(--muted);">—</span>
+                                <?php endif; ?>
+                            </td>
                             <?php endif; ?>
-                        </td>
-                        <td>
-                            <?php if ($line['standing'] !== null && $line['standing'] !== ''): ?>
-                                <span class="badge"><?= h($line['standing']) ?></span>
-                            <?php else: ?>
-                                <span style="color:var(--muted);">—</span>
-                            <?php endif; ?>
-                        </td>
-                        <td style="font-size:12px;color:var(--muted);"><?= h($line['curriculum_label']) ?></td>
-                        <?php if ($canManage): ?>
-                        <td>
-                            <div class="row-actions">
-                                <button class="icon-btn" type="button" title="Edit"
-                                    onclick='openEditCurriculum(<?= json_encode($line, JSON_HEX_TAG|JSON_HEX_APOS) ?>)'>
-                                    <span class="material-symbols-outlined">edit</span>
-                                </button>
-                                <form class="inline-form" method="post" onsubmit="return confirm('Remove this curriculum line?');">
-                                    <input type="hidden" name="action" value="delete_curriculum">
-                                    <input type="hidden" name="curriculum_id" value="<?= h($line['curriculum_id']) ?>">
-                                    <input type="hidden" name="program_id" value="<?= h((string) $selectedProgramId) ?>">
-                                    <button class="icon-btn danger" type="submit" title="Remove">
-                                        <span class="material-symbols-outlined">delete</span>
+                            <?php if ($canManage && $studentContextId === 0): ?>
+                            <td>
+                                <div class="row-actions">
+                                    <button class="icon-btn" type="button" title="Edit"
+                                        onclick='openEditCurriculum(<?= json_encode($line, JSON_HEX_TAG|JSON_HEX_APOS) ?>)'>
+                                        <span class="material-symbols-outlined">edit</span>
                                     </button>
-                                </form>
-                            </div>
-                        </td>
-                        <?php endif; ?>
-                    </tr>
-                <?php endforeach; ?>
+                                    <form class="inline-form" method="post" onsubmit="return confirm('Remove this curriculum line?');">
+                                        <input type="hidden" name="action" value="delete_curriculum">
+                                        <input type="hidden" name="curriculum_id" value="<?= h($line['curriculum_id']) ?>">
+                                        <input type="hidden" name="program_id" value="<?= h((string) $selectedProgramId) ?>">
+                                        <button class="icon-btn danger" type="submit" title="Remove">
+                                            <span class="material-symbols-outlined">delete</span>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                            <?php endif; ?>
+                        </tr>
+                    <?php endforeach; ?>
                 </tbody>
             </table>
         </div>
+    </div>
     </div>
     <?php endforeach; ?>
 </div>
@@ -607,6 +721,10 @@ ob_start(); ?>
             <label>Program Name</label>
             <input type="text" name="program_name" placeholder="e.g. Bachelor of Science in Computer Science" required>
         </div>
+        <div>
+            <label>Major (optional)</label>
+            <input type="text" name="program_major" placeholder="e.g. Major in Web Development">
+        </div>
     </div>
     <div class="form-actions"><button class="btn" type="submit">Create Program</button></div>
 </form>
@@ -633,6 +751,10 @@ ob_start(); ?>
             <label>Program Name</label>
             <input type="text" name="program_name" id="ep_name" required>
         </div>
+        <div>
+            <label>Major (optional)</label>
+            <input type="text" name="program_major" id="ep_major" placeholder="e.g. Major in Web Development">
+        </div>
     </div>
     <div class="form-actions">
         <button type="button" class="btn secondary" data-close>Cancel</button>
@@ -644,6 +766,7 @@ function openEditProgram(p){
     document.getElementById('ep_id').value = p.id;
     document.getElementById('ep_code').value = p.code;
     document.getElementById('ep_name').value = p.name;
+    document.getElementById('ep_major').value = p.major || '';
     var dept = document.getElementById('ep_dept');
     if (p.dept) dept.value = p.dept;
     document.getElementById('editProgramModal').classList.add('active');
@@ -672,6 +795,7 @@ ob_start(); ?>
 
 $modals = [
     render_modal('subjectModal',    'Add Subject',             render_curriculum_subject_form()),
+    render_modal('manageSubjectModal', 'Manage Subjects',      render_subject_manage_modal_body($subjects, $canManage), true),
     render_modal('curriculumModal', 'Add Curriculum Line', render_curriculum_line_form_multi_prereq($programs, $subjects), true),
     render_modal('addProgramModal', 'Add Program', $addProgramForm),
     render_modal('editProgramModal', 'Edit Program', $editProgramForm),

@@ -22,6 +22,11 @@ if (is_post()) {
     if ($requestId > 0) {
         if ($requestType === 'enrollment') {
             if ($action === 'approve') {
+                $req = fetch_one('SELECT * FROM enrollment_requests WHERE id = :id', ['id' => $requestId]);
+                if ($req !== null && request_deadline_passed($req, 'chair')) {
+                    flash('error', 'The chair approval deadline for this request has passed.');
+                    redirect('chair/requests.php?type=' . $requestType);
+                }
                 approve_request_as_chair($requestId, $remark);
                 flash('success', 'Enrollment request approved by department chair and forwarded to registrar.');
             }
@@ -213,6 +218,7 @@ ob_start();
             <?php endif; ?>
 
             <div class="card slim" style="margin-top: 12px;">
+                <div style="margin-bottom:8px;"><?= request_deadline_badge($request, 'chair') ?></div>
                 <p><strong>Adviser remark:</strong> <?= h($request['adviser_remark'] ?: '-') ?></p>
                 <form method="post">
                     <input type="hidden" name="request_id" value="<?= h($request['id']) ?>">
@@ -221,7 +227,7 @@ ob_start();
                     <textarea name="remark" placeholder="Optional chair remark."><?= h($request['chair_remark'] ?? '') ?></textarea>
                     <div class="form-actions">
                         <?php if ($request['workflow_status'] === 'adviser_approved'): ?>
-                            <button class="btn" type="submit" name="action" value="approve">Approve for Registrar</button>
+                            <button class="btn" type="submit" name="action" value="approve" <?= request_deadline_passed($request, 'chair') ? 'disabled' : '' ?>>Approve for Registrar</button>
                             <button class="btn danger" type="submit" name="action" value="reject">Reject Request</button>
                         <?php else: ?>
                             <span class="badge info">Already processed by chair</span>

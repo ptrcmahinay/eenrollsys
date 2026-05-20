@@ -150,4 +150,4 @@ document.getElementById('purposeSelect').addEventListener('change', function() {
 });
 </script>
 <?php
-render_page('Request COG', 'COG', (string) ob_get_clean());
+render_page('Request COG', 'Grades / COG', (string) ob_get_clean());

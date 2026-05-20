@@ -305,7 +305,7 @@ function render_curriculum_subject_form(): string
     ob_start(); ?>
     <form method="post">
         <input type="hidden" name="action" value="add_subject">
-        <div class="form-grid">
+        <div class="form-grid cols-2">
             <div>
                 <label>Subject Code</label>
                 <input type="text" name="subject_code" required>
@@ -317,6 +317,22 @@ function render_curriculum_subject_form(): string
             <div>
                 <label>Units</label>
                 <input type="number" step="0.5" name="units" value="3" required>
+            </div>
+            <div>
+                <label>Lecture Credit</label>
+                <input type="number" step="0.5" name="lec_credit" value="0" min="0">
+            </div>
+            <div>
+                <label>Lab Credit</label>
+                <input type="number" step="0.5" name="lab_credit" value="0" min="0">
+            </div>
+            <div>
+                <label>Lecture Hours</label>
+                <input type="number" step="0.5" name="lec_hours" value="0" min="0">
+            </div>
+            <div>
+                <label>Lab Hours</label>
+                <input type="number" step="0.5" name="lab_hours" value="0" min="0">
             </div>
         </div>
         <div class="form-actions">
@@ -530,6 +546,10 @@ function render_program_add_modal_body(array $departments): string
                 <label>Program Name</label>
                 <input type="text" name="program_name" required>
             </div>
+            <div>
+                <label>Major (optional)</label>
+                <input type="text" name="program_major" placeholder="e.g. Major in Web Development">
+            </div>
         </div>
         <div class="form-actions">
             <button type="button" class="btn secondary" data-close>Cancel</button>
@@ -556,6 +576,7 @@ function render_program_edit_modal_body(array $departments): string
             </div>
             <div><label>Program Code</label><input type="text" name="program_code" id="ep_code" required></div>
             <div style="grid-column:span 2;"><label>Program Name</label><input type="text" name="program_name" id="ep_name" required></div>
+            <div><label>Major (optional)</label><input type="text" name="program_major" id="ep_major" placeholder="e.g. Major in Web Development"></div>
         </div>
         <div class="form-actions">
             <button type="button" class="btn secondary" data-close>Cancel</button>
@@ -567,6 +588,7 @@ function render_program_edit_modal_body(array $departments): string
         document.getElementById('ep_id').value = p.id;
         document.getElementById('ep_code').value = p.code;
         document.getElementById('ep_name').value = p.name;
+        document.getElementById('ep_major').value = p.major || '';
         var dept = document.getElementById('ep_dept');
         if (p.dept) dept.value = p.dept;
         if (typeof openModal === 'function') openModal('editProgramModal');
@@ -595,6 +617,7 @@ function render_program_manage_modal_body(array $programs, array $departments, b
                 <tr>
                     <th data-dt-key="code">Code</th>
                     <th data-dt-key="name">Name</th>
+                    <th data-dt-key="major">Major</th>
                     <th data-dt-key="dept" data-dt-filter="select">Department</th>
                     <?php if ($canManage): ?><th data-dt-no-sort data-dt-no-export></th><?php endif; ?>
                 </tr>
@@ -604,6 +627,7 @@ function render_program_manage_modal_body(array $programs, array $departments, b
                 <tr>
                     <td><strong><?= h($p['program_code']) ?></strong></td>
                     <td><?= h($p['program_name']) ?></td>
+                    <td><?= h(!empty($p['program_major']) ? $p['program_major'] : '—') ?></td>
                     <td><?= h(($p['department_code'] ?? '') . ($p['department_name'] ? ' — ' . $p['department_name'] : '')) ?></td>
                     <?php if ($canManage): ?>
                     <td>
@@ -612,6 +636,7 @@ function render_program_manage_modal_body(array $programs, array $departments, b
                                 "id"=>$p["programs_id"],
                                 "code"=>$p["program_code"],
                                 "name"=>$p["program_name"],
+                                "major"=>$p["program_major"] ?? "",
                                 "dept"=>(string)($p["department_id"] ?? "")
                             ], JSON_HEX_APOS|JSON_HEX_QUOT) ?>)'>
                             <span class="material-symbols-outlined">edit</span>
@@ -643,6 +668,10 @@ function render_subject_add_modal_body(): string
             <div><label>Subject Code</label><input type="text" name="subject_code" required></div>
             <div><label>Units</label><input type="number" step="0.5" name="units" value="3" required></div>
             <div style="grid-column:span 2;"><label>Description</label><input type="text" name="subject_description" required></div>
+            <div><label>Lecture Credit</label><input type="number" step="0.5" name="lec_credit" value="0" min="0"></div>
+            <div><label>Lab Credit</label><input type="number" step="0.5" name="lab_credit" value="0" min="0"></div>
+            <div><label>Lecture Hours</label><input type="number" step="0.5" name="lec_hours" value="0" min="0"></div>
+            <div><label>Lab Hours</label><input type="number" step="0.5" name="lab_hours" value="0" min="0"></div>
         </div>
         <div class="form-actions">
             <button type="button" class="btn secondary" data-close>Cancel</button>
@@ -662,6 +691,10 @@ function render_subject_edit_modal_body(): string
             <div><label>Subject Code</label><input type="text" name="subject_code" id="es_code" required></div>
             <div><label>Units</label><input type="number" step="0.5" name="units" id="es_units" required></div>
             <div style="grid-column:span 2;"><label>Description</label><input type="text" name="subject_description" id="es_desc" required></div>
+            <div><label>Lecture Credit</label><input type="number" step="0.5" name="lec_credit" id="es_lec_credit" min="0"></div>
+            <div><label>Lab Credit</label><input type="number" step="0.5" name="lab_credit" id="es_lab_credit" min="0"></div>
+            <div><label>Lecture Hours</label><input type="number" step="0.5" name="lec_hours" id="es_lec_hours" min="0"></div>
+            <div><label>Lab Hours</label><input type="number" step="0.5" name="lab_hours" id="es_lab_hours" min="0"></div>
         </div>
         <div class="form-actions">
             <button type="button" class="btn secondary" data-close>Cancel</button>
@@ -674,6 +707,10 @@ function render_subject_edit_modal_body(): string
         document.getElementById('es_code').value = s.code;
         document.getElementById('es_desc').value = s.desc;
         document.getElementById('es_units').value = s.units;
+        document.getElementById('es_lec_credit').value = s.lec_credit || 0;
+        document.getElementById('es_lab_credit').value = s.lab_credit || 0;
+        document.getElementById('es_lec_hours').value = s.lec_hours || 0;
+        document.getElementById('es_lab_hours').value = s.lab_hours || 0;
         if (typeof openModal === 'function') openModal('editSubjectModal');
         else document.querySelector('[data-open=editSubjectModal]')?.click();
     }
@@ -693,6 +730,8 @@ function render_subject_manage_modal_body(array $subjects, bool $canManage = tru
     <?php endif; ?>
 
     <h4 style="margin:8px 0;">Existing Subjects</h4>
+    <form method="post" id="bulkSubjectForm">
+    <input type="hidden" name="action" value="bulk_update_subjects">
     <div class="dt" data-dt-page-size="8">
       <div class="table-wrap">
         <table>
@@ -701,7 +740,11 @@ function render_subject_manage_modal_body(array $subjects, bool $canManage = tru
                     <th data-dt-key="code">Code</th>
                     <th data-dt-key="desc">Description</th>
                     <th data-dt-key="units">Units</th>
-                    <?php if ($canManage): ?><th data-dt-no-sort data-dt-no-export></th><?php endif; ?>
+                    <th data-dt-key="leccr">Lec Cr</th>
+                    <th data-dt-key="labcr">Lab Cr</th>
+                    <th data-dt-key="lech">Lec Hrs</th>
+                    <th data-dt-key="labh">Lab Hrs</th>
+                    <?php if ($canManage): ?><th data-dt-no-sort data-dt-no-export>Actions</th><?php endif; ?>
                 </tr>
             </thead>
             <tbody>
@@ -710,22 +753,18 @@ function render_subject_manage_modal_body(array $subjects, bool $canManage = tru
                     <td><strong><?= h($s['subject_code']) ?></strong></td>
                     <td><?= h($s['subject_description']) ?></td>
                     <td><?= h((string)($s['units'] ?? '')) ?></td>
+                    <td>
+                        <input type="hidden" name="subject_ids[]" value="<?= h((string)$s['subject_id']) ?>">
+                        <input type="number" step="0.5" name="lec_credit[<?= h((string)$s['subject_id']) ?>]" value="<?= h((string)($s['lec_credit'] ?? 0)) ?>" min="0" style="width:64px;">
+                    </td>
+                    <td><input type="number" step="0.5" name="lab_credit[<?= h((string)$s['subject_id']) ?>]" value="<?= h((string)($s['lab_credit'] ?? 0)) ?>" min="0" style="width:64px;"></td>
+                    <td><input type="number" step="0.5" name="lec_hours[<?= h((string)$s['subject_id']) ?>]" value="<?= h((string)($s['lec_hours'] ?? 0)) ?>" min="0" style="width:64px;"></td>
+                    <td><input type="number" step="0.5" name="lab_hours[<?= h((string)$s['subject_id']) ?>]" value="<?= h((string)($s['lab_hours'] ?? 0)) ?>" min="0" style="width:64px;"></td>
                     <?php if ($canManage): ?>
                     <td>
-                        <button type="button" class="icon-btn" title="Edit"
-                            onclick='openEditSubject(<?= json_encode([
-                                "id"=>$s["subject_id"],
-                                "code"=>$s["subject_code"],
-                                "desc"=>$s["subject_description"],
-                                "units"=>(string)($s["units"] ?? "")
-                            ], JSON_HEX_APOS|JSON_HEX_QUOT) ?>)'>
-                            <span class="material-symbols-outlined">edit</span>
+                        <button class="icon-btn danger" type="button" title="Delete" onclick="deleteSubject(<?= (int)$s['subject_id'] ?>)">
+                            <span class="material-symbols-outlined">delete</span>
                         </button>
-                        <form method="post" class="inline-form" onsubmit="return confirm('Mark this subject inactive?');" style="display:inline;">
-                            <input type="hidden" name="action" value="delete_subject">
-                            <input type="hidden" name="subject_id" value="<?= h((string)$s['subject_id']) ?>">
-                            <button class="icon-btn danger" type="submit" title="Delete"><span class="material-symbols-outlined">delete</span></button>
-                        </form>
                     </td>
                     <?php endif; ?>
                 </tr>
@@ -734,5 +773,22 @@ function render_subject_manage_modal_body(array $subjects, bool $canManage = tru
         </table>
       </div>
     </div>
+    <div class="form-actions" style="margin-top:10px;">
+        <button class="btn" type="submit">Save Changes</button>
+    </div>
+    </form>
+
+    <form method="post" id="deleteSubjectForm" style="display:none;">
+        <input type="hidden" name="action" value="delete_subject">
+        <input type="hidden" name="subject_id" id="deleteSubjectId" value="">
+    </form>
+    <script>
+    function deleteSubject(id){
+        if (confirm('Mark this subject inactive?')) {
+            document.getElementById('deleteSubjectId').value = id;
+            document.getElementById('deleteSubjectForm').submit();
+        }
+    }
+    </script>
     <?php return ob_get_clean();
 }

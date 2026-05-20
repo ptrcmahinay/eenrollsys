@@ -22,6 +22,11 @@ if (is_post()) {
     if ($requestId > 0) {
         if ($requestType === 'enrollment') {
             if ($action === 'approve') {
+                $req = fetch_one('SELECT * FROM enrollment_requests WHERE id = :id', ['id' => $requestId]);
+                if ($req !== null && request_deadline_passed($req, 'adviser')) {
+                    flash('error', 'The adviser approval deadline for this request has passed.');
+                    redirect('adviser/requests.php?type=' . $requestType);
+                }
                 approve_request_as_adviser($requestId, $remark);
                 flash('success', 'Enrollment request approved and forwarded to the department chair.');
             }
@@ -250,6 +255,7 @@ ob_start();
             <?php endif; ?>
 
             <div class="card slim" style="margin-top: 12px;">
+                <div style="margin-bottom:8px;"><?= request_deadline_badge($request, 'adviser') ?></div>
                 <form method="post">
                     <input type="hidden" name="request_id" value="<?= h($request['id']) ?>">
                     <input type="hidden" name="type" value="<?= h($requestType) ?>">
@@ -257,7 +263,7 @@ ob_start();
                     <textarea name="remark" placeholder="Explain why the request is rejected or note adviser comments."><?= h($request['adviser_remark'] ?? '') ?></textarea>
                     <div class="form-actions">
                         <?php if ($request['workflow_status'] === 'submitted'): ?>
-                            <button class="btn" type="submit" name="action" value="approve">Approve for Chair</button>
+                            <button class="btn" type="submit" name="action" value="approve" <?= request_deadline_passed($request, 'adviser') ? 'disabled' : '' ?>>Approve for Chair</button>
                             <button class="btn danger" type="submit" name="action" value="reject">Reject Request</button>
                         <?php else: ?>
                             <span class="badge info">Already processed by adviser</span>

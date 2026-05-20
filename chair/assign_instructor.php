@@ -292,4 +292,4 @@ if (assignInstructor && assignOffering) {
 }
 </script>
 <?php
-render_page('Instructor Assignments', 'Assign Instructor', (string) ob_get_clean());
+render_page('Instructor Assignments', 'Instructor Assignments', (string) ob_get_clean());

@@ -233,4 +233,4 @@ ob_start();
 <?php endif; ?>
 
 <?php
-render_page('Enrollment Schedule', 'Enrollment Schedule', (string) ob_get_clean());
+render_page('Enrollment Schedule', 'Enroll Schedule', (string) ob_get_clean());

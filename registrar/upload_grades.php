@@ -41,12 +41,13 @@ $rows = fetch_all(
      ORDER BY ay.start_year DESC, s.student_number, sub.subject_code'
 );
 
+$termDeadline = current_term();
 ob_start();
 ?>
 <div class="page-header">
     <div>
         <h1>Registrar Grade Management</h1>
-        <p>View and edit grades across students. This page also provides a CSV template export for local bulk work.</p>
+        <p>View and edit grades across students. This page also provides a CSV template export for local bulk work. <?= deadline_badge('grade_deadline', $termDeadline) ?></p>
     </div>
     <div class="actions-row">
         <a class="btn secondary" href="<?= h(app_url('registrar/upload_grades.php?template_only=1')) ?>">Download CSV Template</a>

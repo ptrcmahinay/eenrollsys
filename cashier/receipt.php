@@ -203,4 +203,4 @@ ob_start();
 }
 </style>
 <?php
-render_page('Payment Receipt', 'Receipt', (string) ob_get_clean());
+render_page('Payment Receipt', 'Payments', (string) ob_get_clean());

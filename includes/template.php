@@ -50,6 +50,7 @@ $sidebarCollapsed = ($_COOKIE['sidebar'] ?? 'expanded') === 'collapsed';
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="<?= h(app_url('includes/style.css')) ?>">
+    <style>tr[data-href]{cursor:pointer;}tr[data-href]:hover{background:#f8fafc;}</style>
     <script>
         // Apply collapsed state BEFORE paint to avoid flash
         (function(){
@@ -90,22 +91,15 @@ $sidebarCollapsed = ($_COOKIE['sidebar'] ?? 'expanded') === 'collapsed';
         </nav>
 
         <div class="sidebar-footer">
-            <!-- <a class="menu-item <?= ($activePage ?? '') === 'Settings' ? 'active' : '' ?>"
-               href="<?= h(app_url('includes/settings.php?tab=profile')) ?>">
-                <span class="material-symbols-outlined sidebar-icon">manage_accounts</span>
-                <span class="sidebar-text">My Account</span>
-            </a> -->
-            <?php if (in_array($user_role, ['admin', 'registrar'], true)): ?>
-            <a class="menu-item <?= ($activePage ?? '') === 'Settings' ? 'active' : '' ?>"
-               href="<?= h(app_url('includes/settings.php?tab=enrollment')) ?>">
+            <a class="menu-item" href="<?= h(app_url('includes/settings.php')) ?>">
                 <span class="material-symbols-outlined sidebar-icon">settings</span>
                 <span class="sidebar-text">Settings</span>
             </a>
-            <?php endif; ?>
             <a class="menu-item" href="<?= h(app_url('auth/logout.php')) ?>">
                 <span class="material-symbols-outlined sidebar-icon">logout</span>
                 <span class="sidebar-text">Logout</span>
             </a>
+            <!-- ['label' => 'Settings', 'path' => 'includes/settings.php', 'icon' => 'settings'], -->
         </div>
 
     </aside>
@@ -242,7 +236,7 @@ $sidebarCollapsed = ($_COOKIE['sidebar'] ?? 'expanded') === 'collapsed';
         }
         </script>
         <?php endif; ?>
-        <?php renderBreadcrumbs($page_title, $_SESSION['role']); ?>
+        <?php renderBreadcrumbs($page_title, $_SESSION['role'] ?? '', $breadcrumbs ?? []); ?>
         <?= $main_content ?>
 
     </main>
@@ -335,6 +329,37 @@ document.addEventListener("click", (e) => {
         });
     });
 });
+
+// ── Clickable table rows (data-href) ──
+document.addEventListener("click", (e) => {
+    const row = e.target.closest("tr[data-href]");
+    if (!row) return;
+    const tag = e.target.closest("a, button, input, select, textarea, label, .row-actions, .dt-bulk-bar, .dt-toolbar, .dt-footer");
+    if (tag) return;
+    const href = row.getAttribute("data-href");
+    if (href) window.location.href = href;
+});
+
+// ── Notification badge polling ──
+<?php if ($user_role === 'student' && !empty($user['student_id'])): ?>
+(function pollNotifBadge() {
+    fetch('<?= h(app_url('includes/notif_count.php')) ?>')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var count = parseInt(data.count) || 0;
+            var badges = document.querySelectorAll('.sidebar-badge');
+            badges.forEach(function(b) {
+                var parentLink = b.closest('a');
+                if (parentLink && parentLink.querySelector('.sidebar-text') && parentLink.querySelector('.sidebar-text').textContent.trim() === 'Notifications') {
+                    if (count <= 0) { b.style.display = 'none'; }
+                    else { b.style.display = ''; b.textContent = count > 9 ? '9+' : count; }
+                }
+            });
+        })
+        .catch(function() {});
+    setTimeout(pollNotifBadge, 30000);
+})();
+<?php endif; ?>
 </script>
 
 <?php else: ?>

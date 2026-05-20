@@ -135,4 +135,4 @@ ob_start();
 </div>
 <?php endif; ?>
 <?php
-render_page('Advisory Class View', 'Class View', (string) ob_get_clean());
+render_page('Advisory Class View', 'Advisory Class', (string) ob_get_clean());

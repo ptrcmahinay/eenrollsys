@@ -37,6 +37,29 @@ $irregularUnitCap = (int) setting('irregular_unit_cap', '28');
             </div>
         </div>
 
+        <div class="settings-form-grid" style="margin-top:14px;padding-top:14px;border-top:1px solid #e2e8f0;">
+            <div class="settings-field">
+                <label for="enr_adviser_days">Adviser Approval Deadline (days)</label>
+                <input type="number" id="enr_adviser_days" name="adviser_approval_days" value="<?= h(setting('adviser_approval_days', '3')) ?>" min="1" max="365">
+                <div class="settings-field-hint">Days from request submission for adviser to approve. After this, approval is blocked.</div>
+            </div>
+            <div class="settings-field">
+                <label for="enr_chair_days">Chair Approval Deadline (days)</label>
+                <input type="number" id="enr_chair_days" name="chair_approval_days" value="<?= h(setting('chair_approval_days', '3')) ?>" min="1" max="365">
+                <div class="settings-field-hint">Days from adviser approval for department chair to approve.</div>
+            </div>
+            <div class="settings-field">
+                <label for="enr_registrar_days">Registrar Finalization Deadline (days)</label>
+                <input type="number" id="enr_registrar_days" name="registrar_approval_days" value="<?= h(setting('registrar_approval_days', '3')) ?>" min="1" max="365">
+                <div class="settings-field-hint">Days from chair approval for registrar to finalize.</div>
+            </div>
+            <div class="settings-field">
+                <label for="enr_grade_days">Grade Encoding Deadline (days)</label>
+                <input type="number" id="enr_grade_days" name="grade_deadline_days" value="<?= h(setting('grade_deadline_days', '30')) ?>" min="1" max="365">
+                <div class="settings-field-hint">Days after term end date for instructors to submit grades.</div>
+            </div>
+        </div>
+
         <div class="settings-actions">
             <button class="btn" type="submit">Save Enrollment Settings</button>
         </div>

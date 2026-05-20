@@ -16,6 +16,7 @@ function ensure_soft_delete_columns(): void
         'academic_terms'              => '',
         'academic_years'              => '',
         'section_subject_offerings'   => '',
+        'departments'                 => '',
     ];
 
     try {
@@ -65,12 +66,27 @@ function ensure_notifications_table(): void
         }
     } catch (\Throwable $e) {
     }
+}
 
-    ensure_processing_columns();
-    ensure_audit_log_table();
-    ensure_staff_notifications_table();
-    ensure_add_drop_table();
-    ensure_draft_status();
+function ensure_deadline_columns(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    try {
+        global $pdo;
+        if (!($pdo instanceof PDO)) return;
+
+        $deadlines = ['adviser_deadline', 'chair_deadline', 'registrar_deadline', 'grade_deadline'];
+        foreach ($deadlines as $col) {
+            $stmt = $pdo->query("SHOW COLUMNS FROM `academic_terms` LIKE '$col'");
+            if (!$stmt || !$stmt->fetch()) {
+                $pdo->exec("ALTER TABLE `academic_terms` ADD COLUMN `$col` DATE NULL AFTER `end_date`");
+            }
+        }
+    } catch (\Throwable $e) {
+    }
 }
 
 function ensure_processing_columns(): void
@@ -334,6 +350,61 @@ function ensure_password_reset_tokens_table(): void
     }
 }
 
+function ensure_curriculum_columns(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    try {
+        global $pdo;
+        if (!($pdo instanceof PDO)) return;
+
+        $stmt = $pdo->query("SHOW COLUMNS FROM `programs` LIKE 'program_major'");
+        if (!$stmt || !$stmt->fetch()) {
+            $pdo->exec("ALTER TABLE `programs` ADD COLUMN `program_major` VARCHAR(255) NULL AFTER `program_name`");
+        }
+
+        $creditCols = ['lec_credit', 'lab_credit', 'lec_hours', 'lab_hours'];
+        foreach ($creditCols as $col) {
+            $stmt = $pdo->query("SHOW COLUMNS FROM `subjects` LIKE '{$col}'");
+            if (!$stmt || !$stmt->fetch()) {
+                $pdo->exec("ALTER TABLE `subjects` ADD COLUMN `{$col}` DECIMAL(4,1) NOT NULL DEFAULT 0 AFTER `units`");
+            }
+        }
+    } catch (\Throwable $e) {
+    }
+}
+
+function ensure_fee_items_table(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    try {
+        global $pdo;
+        if (!($pdo instanceof PDO)) return;
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS fee_items (
+                id            INT AUTO_INCREMENT PRIMARY KEY,
+                category      ENUM('laboratory','other','assessment') NOT NULL,
+                fee_name      VARCHAR(255) NOT NULL,
+                amount        DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+                program_id    INT NULL,
+                year_level    INT NULL,
+                semester      VARCHAR(20) NULL,
+                is_mandatory  TINYINT(1) NOT NULL DEFAULT 0,
+                is_active     TINYINT(1) NOT NULL DEFAULT 1,
+                created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                CONSTRAINT fk_fee_program FOREIGN KEY (program_id) REFERENCES programs(programs_id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+        ");
+    } catch (\Throwable $e) {
+    }
+}
+
 function ensure_payments_table(): void
 {
     static $done = false;
@@ -365,6 +436,24 @@ function ensure_payments_table(): void
         $stmt = $pdo->query("SHOW COLUMNS FROM `enrollment_requests` LIKE 'payment_status'");
         if (!$stmt || !$stmt->fetch()) {
             $pdo->exec("ALTER TABLE `enrollment_requests` ADD COLUMN `payment_status` ENUM('unpaid','partial','paid','waived') NOT NULL DEFAULT 'unpaid' AFTER `ra10931_status`");
+        }
+    } catch (\Throwable $e) {
+    }
+}
+
+function ensure_student_subjects_columns(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    try {
+        global $pdo;
+        if (!($pdo instanceof PDO)) return;
+
+        $stmt = $pdo->query("SHOW COLUMNS FROM `student_subjects` LIKE 'remarks'");
+        if (!$stmt || !$stmt->fetch()) {
+            $pdo->exec("ALTER TABLE `student_subjects` ADD COLUMN `remarks` VARCHAR(255) NULL AFTER `final_grade`");
         }
     } catch (\Throwable $e) {
     }

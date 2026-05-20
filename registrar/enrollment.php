@@ -14,6 +14,11 @@ if (is_post()) {
     if ($action === 'finalize' && in_array($_SESSION['role'] ?? '', ['admin', 'registrar'], true)) {
         $requestId = (int) ($_POST['request_id'] ?? 0);
         $sectionId = (int) ($_POST['section_id'] ?? 0);
+        $req = fetch_one('SELECT * FROM enrollment_requests WHERE id = :id', ['id' => $requestId]);
+        if ($req !== null && request_deadline_passed($req, 'registrar')) {
+            flash('error', 'The registrar finalization deadline for this request has passed.');
+            redirect('registrar/enrollment.php?type=' . $requestType . ($_SERVER['QUERY_STRING'] ? '&' . $_SERVER['QUERY_STRING'] : ''));
+        }
         if ($requestType === 'enrollment') {
             if ($requestId > 0 && $sectionId > 0) {
                 if (finalize_request_by_registrar($requestId, $sectionId)) {
@@ -54,9 +59,14 @@ if (is_post()) {
     if ($action === 'bulk_finalize' && in_array($_SESSION['role'] ?? '', ['admin', 'registrar'], true)) {
         $ids = $_POST['request_ids'] ?? [];
         $sectionId = (int) ($_POST['bulk_section_id'] ?? 0);
-        $success = 0; $failed = 0;
+        $success = 0; $failed = 0; $skipped = 0;
         if ($requestType === 'enrollment') {
             foreach ((array) $ids as $id) {
+                $req = fetch_one('SELECT * FROM enrollment_requests WHERE id = :id', ['id' => (int) $id]);
+                if ($req !== null && request_deadline_passed($req, 'registrar')) {
+                    $skipped++;
+                    continue;
+                }
                 if ($sectionId > 0 && finalize_request_by_registrar((int) $id, $sectionId)) {
                     $success++;
                 } else {
@@ -419,4 +429,6 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 <?php
-render_page('Enrollment Queue', 'Enrollment', (string) ob_get_clean());
+$enrollmentActivePage = $requestType === 'add_drop' ? 'Add/Drop Requests' : 'Enrollment Queue';
+$enrollmentPageTitle = $requestType === 'add_drop' ? 'Add/Drop Requests' : 'Enrollment Queue';
+render_page($enrollmentPageTitle, $enrollmentActivePage, (string) ob_get_clean());

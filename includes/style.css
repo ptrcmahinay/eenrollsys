@@ -199,6 +199,93 @@ nav::-webkit-scrollbar-thumb { background: var(--sidebar-hover); border-radius: 
 }
 html.collapsed .sidebar-badge { display: none; }
 
+/* ── Section headers ── */
+.sidebar-section-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-light);
+    opacity: 0.55;
+    padding: 14px 16px 5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+html.collapsed .sidebar-section-label { display: none; }
+body.dark-mode .sidebar-section-label { opacity: 0.5; }
+
+/* ── Dividers ── */
+.sidebar-divider {
+    height: 1px;
+    background: var(--sidebar-border);
+    margin: 6px 16px;
+}
+html.collapsed .sidebar-divider { margin: 6px 10px; }
+
+/* ── Group labels (smaller, less prominent) ── */
+.sidebar-group-label {
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--text-light);
+    opacity: 0.45;
+    padding: 10px 16px 3px 20px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: 0.3px;
+}
+html.collapsed .sidebar-group-label { display: none; }
+body.dark-mode .sidebar-group-label { opacity: 0.4; }
+
+/* ── Active left accent bar ── */
+.menu-item.active {
+    position: relative;
+    background: var(--sidebar-active);
+    color: var(--text-white);
+    font-weight: 600;
+}
+.menu-item.active::before {
+    content: '';
+    position: absolute;
+    left: -8px;
+    top: 6px;
+    bottom: 6px;
+    width: 3px;
+    background: var(--primary);
+    border-radius: 0 3px 3px 0;
+}
+html.collapsed .menu-item.active::before {
+    left: -6px;
+}
+
+/* ── Collapsed tooltips ── */
+html.collapsed .menu-item {
+    position: relative;
+}
+html.collapsed .menu-item:hover::after {
+    content: attr(title);
+    position: fixed;
+    left: 76px;
+    top: auto;
+    transform: translateY(-50%);
+    background: var(--sidebar-bg);
+    color: var(--text-light);
+    padding: 7px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    z-index: 300;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+    pointer-events: none;
+    border: 1px solid var(--sidebar-border);
+    letter-spacing: 0.2px;
+}
+body.dark-mode html.collapsed .menu-item:hover::after {
+    border-color: rgba(255,255,255,0.1);
+}
+
 .sidebar-footer {
     margin-top: auto;
     padding: 10px 0;

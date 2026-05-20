@@ -93,7 +93,7 @@ if ($action === 'update_profile') {
 }
 
 if ($action === 'update_enrollment' && in_array($role, ['admin', 'registrar'], true)) {
-    $keys = ['tuition_per_unit', 'other_school_fees', 'allow_online_enrollment', 'irregular_unit_cap'];
+    $keys = ['tuition_per_unit', 'other_school_fees', 'allow_online_enrollment', 'irregular_unit_cap', 'adviser_approval_days', 'chair_approval_days', 'registrar_approval_days', 'grade_deadline_days'];
     foreach ($keys as $key) {
         $value = trim((string) ($_POST[$key] ?? ''));
         if ($value !== '') set_setting($key, $value);

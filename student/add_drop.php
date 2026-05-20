@@ -431,4 +431,4 @@ function wizardGoTo(step) {
 }
 </script>
 <?php
-render_page('Add/Drop Subjects', 'Add/Drop', (string) ob_get_clean());
+render_page('Add/Drop Subjects', 'Add/Drop Subjects', (string) ob_get_clean());

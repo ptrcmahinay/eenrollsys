@@ -64,6 +64,7 @@ ob_start();
             <a class="btn secondary small" href="<?= h(app_url('student/download_grades.php?student_id=' . $studentId . '&term_id=' . $term['id'])) ?>">COG <?= h($term['year_label']) ?></a>
         <?php endforeach; ?>
         <a class="btn" href="<?= h(app_url('checklist.php?student_id=' . $studentId)) ?>">Checklist</a>
+        <a class="btn secondary" href="<?= h(app_url('registrar/curriculum.php?program_id=' . $student['program_id'] . '&student_id=' . $studentId)) ?>">Curriculum View</a>
     </div>
 </div>
 

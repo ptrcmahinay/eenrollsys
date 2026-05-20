@@ -81,7 +81,6 @@ ob_start();
             <table>
                 <thead>
                     <tr>
-                        <th data-dt-no-sort data-dt-no-export><input type="checkbox" class="dt-bulk-select-all" aria-label="Select all"></th>
                         <th data-dt-key="student_number">Student Number</th>
                         <th data-dt-key="name">Name</th>
                         <th data-dt-key="program" data-dt-filter="select">Program</th>
@@ -99,8 +98,8 @@ ob_start();
                 <tbody>
                 <?php foreach ($students as $student): ?>
                     <?php $financial = financial_profile($student); ?>
-                    <tr data-dt-row-id="<?= h((string)$student['id']) ?>">
-                        <td><input type="checkbox" class="dt-bulk-row" value="<?= h((string)$student['id']) ?>" aria-label="Select row"></td>
+                    <tr data-dt-row-id="<?= h((string)$student['id']) ?>"
+                        data-href="<?= h(app_url('registrar/student_detail.php?student_id=' . $student['id'])) ?>">
                         <td><strong><?= h($student['student_number']) ?></strong></td>
                         <td><?= h($student['full_name']) ?></td>
                         <td><?= h($student['program_code']) ?></td>
