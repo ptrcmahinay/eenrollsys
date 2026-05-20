@@ -21,6 +21,7 @@ function db(): PDO
         ensure_soft_delete_columns();
         ensure_notifications_table();
         ensure_email_verification_columns();
+        ensure_fee_items_table();
     }
     return $pdo;
 }
@@ -37,8 +38,8 @@ function getInitials($name) {
     return $initials ?: 'U';
 }
 
-function renderBreadcrumbs($page_title, $role) {
-
+function renderBreadcrumbs(string $pageTitle, string $role, array $breadcrumbs = []): void
+{
     $routes = [
         'student'    => 'student/dashboard.php',
         'admin'      => 'admin/dashboard.php',
@@ -49,14 +50,26 @@ function renderBreadcrumbs($page_title, $role) {
 
     $home = app_url($routes[$role] ?? 'index.php');
 
-    echo '
-    <nav class="text-sm text-gray-500 mb-0 flex items-center gap-2">
-        <a href="'.$home.'" class="flex items-center gap-1 hover:text-gray-700">
-            <span class="material-symbols-outlined text-base">home</span>
-        </a>
-        <span>/</span>
-        <span class="page-title font-medium">'.$page_title.'</span>
-    </nav>';
+    echo '<nav class="text-sm text-gray-500 mb-0 flex items-center gap-2">';
+    echo '<a href="' . $home . '" class="flex items-center gap-1 hover:text-gray-700">';
+    echo '<span class="material-symbols-outlined text-base">home</span>';
+    echo '</a>';
+
+    if (!empty($breadcrumbs)) {
+        foreach ($breadcrumbs as $crumb) {
+            echo '<span class="material-symbols-outlined text-base">chevron_right</span>';
+            if (isset($crumb['url'])) {
+                echo '<a href="' . h($crumb['url']) . '" class="hover:text-gray-700">' . h($crumb['label']) . '</a>';
+            } else {
+                echo '<span class="page-title font-medium">' . h($crumb['label']) . '</span>';
+            }
+        }
+    } else {
+        echo '<span class="material-symbols-outlined text-base">chevron_right</span>';
+        echo '<span class="page-title font-medium">' . h($pageTitle) . '</span>';
+    }
+
+    echo '</nav>';
 }
 
 function app_base_url(): string
@@ -414,6 +427,72 @@ function current_term(): ?array
          ORDER BY t.id DESC
          LIMIT 1'
     );
+}
+
+function request_deadline(array $request, string $stage): ?string
+{
+    $daysMap = [
+        'adviser' => (int) setting('adviser_approval_days', '3'),
+        'chair' => (int) setting('chair_approval_days', '3'),
+        'registrar' => (int) setting('registrar_approval_days', '3'),
+    ];
+    $days = $daysMap[$stage] ?? 3;
+    if ($days <= 0) return null;
+
+    $fromMap = [
+        'adviser' => 'created_at',
+        'chair' => 'adviser_processed_at',
+        'registrar' => 'chair_processed_at',
+    ];
+    $fromCol = $fromMap[$stage] ?? 'created_at';
+    $fromDate = $request[$fromCol] ?? null;
+    if ($fromDate === null) return null;
+
+    return date('Y-m-d', strtotime((string) $fromDate . " +{$days} days"));
+}
+
+function request_deadline_passed(array $request, string $stage): bool
+{
+    $deadline = request_deadline($request, $stage);
+    if ($deadline === null) return false;
+    return strtotime($deadline) < time();
+}
+
+function request_deadline_badge(array $request, string $stage): string
+{
+    $deadline = request_deadline($request, $stage);
+    if ($deadline === null) return '';
+    $label = date('M j, Y', strtotime($deadline));
+    if (request_deadline_passed($request, $stage)) {
+        return '<span class="badge danger">Deadline passed — ' . $label . '</span>';
+    }
+    $remaining = ceil((strtotime($deadline) - time()) / 86400);
+    return '<span class="badge warning">' . $remaining . ' day(s) left — ' . $label . '</span>';
+}
+
+function grade_deadline_passed(): bool
+{
+    $days = (int) setting('grade_deadline_days', '30');
+    if ($days <= 0) return false;
+    $term = current_term();
+    if ($term === null || empty($term['end_date'])) return false;
+    $gradeDeadline = date('Y-m-d', strtotime((string) $term['end_date'] . " +{$days} days"));
+    return strtotime($gradeDeadline) < time();
+}
+
+function grade_deadline_badge(): string
+{
+    $days = (int) setting('grade_deadline_days', '30');
+    if ($days <= 0) return 'No deadline set';
+    $term = current_term();
+    if ($term === null || empty($term['end_date'])) return 'No term end date set';
+    $deadline = date('Y-m-d', strtotime((string) $term['end_date'] . " +{$days} days"));
+    $label = date('M j, Y', strtotime($deadline));
+    if (grade_deadline_passed()) {
+        return '<span class="badge danger">Grade deadline passed — ' . $label . '</span>';
+    }
+    $remaining = ceil((strtotime($deadline) - time()) / 86400);
+    return '<span class="badge warning">Grade deadline: ' . $remaining . ' day(s) left — ' . $label . '</span>';
 }
 
 function enrollment_is_open(?int $yearLevel = null): bool
@@ -998,6 +1077,11 @@ function save_grade(int $studentSubjectId, string $grade, int $instructorId): vo
     $grade = trim($grade);
     $studentSubject = fetch_one('SELECT * FROM student_subjects WHERE id = :id', ['id' => $studentSubjectId]);
     if ($studentSubject === null) {
+        return;
+    }
+
+    if (grade_deadline_passed()) {
+        flash('error', 'The grade submission deadline has passed. Contact the registrar to submit grades.');
         return;
     }
 
