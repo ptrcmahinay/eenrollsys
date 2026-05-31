@@ -69,7 +69,7 @@ if (!empty($programs)) {
     $allCurriculum = fetch_all(
         'SELECT pc.curriculum_id, pc.program_id, pc.year_level, pc.semester,
                 pc.prerequisite_subject_id,
-                sub.subject_code, sub.subject_description, sub.units,
+                sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units,
                 prereq.subject_code AS prereq_code
          FROM program_curriculum pc
          INNER JOIN subjects sub   ON sub.subject_id   = pc.subject_id

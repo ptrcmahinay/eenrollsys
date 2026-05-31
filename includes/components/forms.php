@@ -315,10 +315,6 @@ function render_curriculum_subject_form(): string
                 <input type="text" name="subject_description" required>
             </div>
             <div>
-                <label>Units</label>
-                <input type="number" step="0.5" name="units" value="3" required>
-            </div>
-            <div>
                 <label>Lecture Credit</label>
                 <input type="number" step="0.5" name="lec_credit" value="0" min="0">
             </div>
@@ -359,9 +355,11 @@ function render_curriculum_line_form(array $programs, array $subjects): string
             </div>
             <div>
                 <label>Subject</label>
-                <select name="subject_id" required>
+                <input type="text" class="subject-search" placeholder="Type to search subjects..." oninput="filterSubjectSelect(this, 'subject_id')" style="margin-bottom:4px;font-size:12px;padding:4px 8px;width:100%;box-sizing:border-box;">
+                <select name="subject_id" id="subject_id" required style="max-height:200px;">
+                    <option value="">— Select —</option>
                     <?php foreach ($subjects as $s): ?>
-                        <option value="<?= h($s['subject_id']) ?>"><?= h($s['subject_code'] . ' - ' . $s['subject_description']) ?></option>
+                        <option value="<?= h($s['subject_id']) ?>" data-code="<?= h($s['subject_code']) ?>" data-desc="<?= h($s['subject_description']) ?>"><?= h($s['subject_code'] . ' - ' . $s['subject_description']) ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
@@ -394,28 +392,31 @@ function render_curriculum_line_form(array $programs, array $subjects): string
             </div>
             <div>
                 <label>Prerequisite 1 (optional)</label>
-                <select name="prerequisite_subject_id">
+                <input type="text" class="subject-search" placeholder="Search..." oninput="filterSubjectSelect(this, 'prereq1_id')" style="margin-bottom:4px;font-size:12px;padding:4px 8px;width:100%;box-sizing:border-box;">
+                <select name="prerequisite_subject_id" id="prereq1_id">
                     <option value="">None</option>
                     <?php foreach ($subjects as $s): ?>
-                        <option value="<?= h($s['subject_id']) ?>"><?= h($s['subject_code']) ?></option>
+                        <option value="<?= h($s['subject_id']) ?>" data-code="<?= h($s['subject_code']) ?>" data-desc="<?= h($s['subject_description']) ?>"><?= h($s['subject_code']) ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
             <div>
                 <label>Prerequisite 2 (optional)</label>
-                <select name="prerequisite_subject_2_id">
+                <input type="text" class="subject-search" placeholder="Search..." oninput="filterSubjectSelect(this, 'prereq2_id')" style="margin-bottom:4px;font-size:12px;padding:4px 8px;width:100%;box-sizing:border-box;">
+                <select name="prerequisite_subject_2_id" id="prereq2_id">
                     <option value="">None</option>
                     <?php foreach ($subjects as $s): ?>
-                        <option value="<?= h($s['subject_id']) ?>"><?= h($s['subject_code']) ?></option>
+                        <option value="<?= h($s['subject_id']) ?>" data-code="<?= h($s['subject_code']) ?>" data-desc="<?= h($s['subject_description']) ?>"><?= h($s['subject_code']) ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
             <div>
                 <label>Prerequisite 3 (optional)</label>
-                <select name="prerequisite_subject_3_id">
+                <input type="text" class="subject-search" placeholder="Search..." oninput="filterSubjectSelect(this, 'prereq3_id')" style="margin-bottom:4px;font-size:12px;padding:4px 8px;width:100%;box-sizing:border-box;">
+                <select name="prerequisite_subject_3_id" id="prereq3_id">
                     <option value="">None</option>
                     <?php foreach ($subjects as $s): ?>
-                        <option value="<?= h($s['subject_id']) ?>"><?= h($s['subject_code']) ?></option>
+                        <option value="<?= h($s['subject_id']) ?>" data-code="<?= h($s['subject_code']) ?>" data-desc="<?= h($s['subject_description']) ?>"><?= h($s['subject_code']) ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
@@ -430,6 +431,82 @@ function render_curriculum_line_form(array $programs, array $subjects): string
 function render_curriculum_line_form_multi_prereq(array $programs, array $subjects): string
 {
     return render_curriculum_line_form($programs, $subjects);
+}
+
+function render_bulk_curriculum_form(array $programs, array $subjects): string
+{
+    ob_start(); ?>
+    <form method="post">
+        <input type="hidden" name="action" value="bulk_add_curriculum">
+        <div class="form-grid cols-2" style="margin-bottom:10px;">
+            <div>
+                <label>Program</label>
+                <select name="bulk_program_id" required>
+                    <?php foreach ($programs as $p): ?>
+                        <option value="<?= h($p['programs_id']) ?>"><?= h($p['program_code']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div>
+                <label>Curriculum Label</label>
+                <input type="text" name="bulk_curriculum_label" value="2024">
+            </div>
+        </div>
+        <div class="table-wrap" style="max-height:300px;overflow-y:auto;">
+        <table id="bulkCurrTable" style="width:100%;font-size:12px;">
+            <thead>
+                <tr>
+                    <th>Subject Code</th>
+                    <th style="width:70px;">Year</th>
+                    <th style="width:80px;">Semester</th>
+                    <th style="width:120px;">Standing</th>
+                    <th style="width:36px;"></th>
+                </tr>
+            </thead>
+            <tbody id="bulkCurrRows">
+                <tr>
+                    <td><input type="text" name="bulk_curr_code[]" style="width:100%;box-sizing:border-box;font-size:12px;" required></td>
+                    <td>
+                        <select name="bulk_curr_year[]" style="width:100%;box-sizing:border-box;font-size:12px;">
+                            <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
+                        </select>
+                    </td>
+                    <td>
+                        <select name="bulk_curr_sem[]" style="width:100%;box-sizing:border-box;font-size:12px;">
+                            <option value="1st">1st</option><option value="2nd">2nd</option><option value="mid">Midyear</option>
+                        </select>
+                    </td>
+                    <td>
+                        <select name="bulk_curr_standing[]" style="width:100%;box-sizing:border-box;font-size:12px;">
+                            <option value="">—</option>
+                            <option value="2nd Year Standing">2nd Year</option>
+                            <option value="3rd Year Standing">3rd Year</option>
+                            <option value="4th Year Standing">4th Year</option>
+                        </select>
+                    </td>
+                    <td><button type="button" class="icon-btn danger" onclick="this.closest('tr').remove()" style="font-size:14px;padding:2px 6px;">✕</button></td>
+                </tr>
+            </tbody>
+        </table>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+            <button type="button" class="btn secondary" style="font-size:12px;" onclick="addBulkCurrRow()">+ Add Row</button>
+            <button class="btn" type="submit" style="font-size:12px;">Add All Lines</button>
+        </div>
+    </form>
+    <script>
+    function addBulkCurrRow() {
+        var tbody = document.getElementById('bulkCurrRows');
+        var row = document.createElement('tr');
+        row.innerHTML = '<td><input type="text" name="bulk_curr_code[]" style="width:100%;box-sizing:border-box;font-size:12px;" required></td>' +
+            '<td><select name="bulk_curr_year[]" style="width:100%;box-sizing:border-box;font-size:12px;"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></td>' +
+            '<td><select name="bulk_curr_sem[]" style="width:100%;box-sizing:border-box;font-size:12px;"><option value="1st">1st</option><option value="2nd">2nd</option><option value="mid">Midyear</option></select></td>' +
+            '<td><select name="bulk_curr_standing[]" style="width:100%;box-sizing:border-box;font-size:12px;"><option value="">—</option><option value="2nd Year Standing">2nd Year</option><option value="3rd Year Standing">3rd Year</option><option value="4th Year Standing">4th Year</option></select></td>' +
+            '<td><button type="button" class="icon-btn danger" onclick="this.closest(\'tr\').remove()" style="font-size:14px;padding:2px 6px;">✕</button></td>';
+        tbody.appendChild(row);
+    }
+    </script>
+    <?php return ob_get_clean();
 }
 
 function render_edit_curriculum_form(array $programs, array $subjects): string
@@ -449,9 +526,11 @@ function render_edit_curriculum_form(array $programs, array $subjects): string
             </div>
             <div>
                 <label>Subject</label>
-                <select name="subject_id" id="ec_subject_id" required>
+                <input type="text" class="subject-search" placeholder="Type to search subjects..." oninput="filterSubjectSelect(this, 'ec_subject_id')" style="margin-bottom:4px;font-size:12px;padding:4px 8px;width:100%;box-sizing:border-box;">
+                <select name="subject_id" id="ec_subject_id" required style="max-height:200px;">
+                    <option value="">— Select —</option>
                     <?php foreach ($subjects as $s): ?>
-                        <option value="<?= h($s['subject_id']) ?>"><?= h($s['subject_code'] . ' - ' . $s['subject_description']) ?></option>
+                        <option value="<?= h($s['subject_id']) ?>" data-code="<?= h($s['subject_code']) ?>" data-desc="<?= h($s['subject_description']) ?>"><?= h($s['subject_code'] . ' - ' . $s['subject_description']) ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
@@ -550,6 +629,10 @@ function render_program_add_modal_body(array $departments): string
                 <label>Major (optional)</label>
                 <input type="text" name="program_major" placeholder="e.g. Major in Web Development">
             </div>
+            <div>
+                <label>Lab Fee per Unit (₱)</label>
+                <input type="number" step="0.01" name="lab_fee_per_unit" value="0" min="0" placeholder="e.g. 200">
+            </div>
         </div>
         <div class="form-actions">
             <button type="button" class="btn secondary" data-close>Cancel</button>
@@ -577,6 +660,7 @@ function render_program_edit_modal_body(array $departments): string
             <div><label>Program Code</label><input type="text" name="program_code" id="ep_code" required></div>
             <div style="grid-column:span 2;"><label>Program Name</label><input type="text" name="program_name" id="ep_name" required></div>
             <div><label>Major (optional)</label><input type="text" name="program_major" id="ep_major" placeholder="e.g. Major in Web Development"></div>
+            <div><label>Lab Fee per Unit (₱)</label><input type="number" step="0.01" name="lab_fee_per_unit" id="ep_lab_fee" value="0" min="0" placeholder="e.g. 200"></div>
         </div>
         <div class="form-actions">
             <button type="button" class="btn secondary" data-close>Cancel</button>
@@ -589,6 +673,7 @@ function render_program_edit_modal_body(array $departments): string
         document.getElementById('ep_code').value = p.code;
         document.getElementById('ep_name').value = p.name;
         document.getElementById('ep_major').value = p.major || '';
+        document.getElementById('ep_lab_fee').value = p.lab_fee || 0;
         var dept = document.getElementById('ep_dept');
         if (p.dept) dept.value = p.dept;
         if (typeof openModal === 'function') openModal('editProgramModal');
@@ -666,8 +751,7 @@ function render_subject_add_modal_body(): string
         <input type="hidden" name="action" value="add_subject">
         <div class="form-grid cols-2">
             <div><label>Subject Code</label><input type="text" name="subject_code" required></div>
-            <div><label>Units</label><input type="number" step="0.5" name="units" value="3" required></div>
-            <div style="grid-column:span 2;"><label>Description</label><input type="text" name="subject_description" required></div>
+            <div><label>Description</label><input type="text" name="subject_description" required></div>
             <div><label>Lecture Credit</label><input type="number" step="0.5" name="lec_credit" value="0" min="0"></div>
             <div><label>Lab Credit</label><input type="number" step="0.5" name="lab_credit" value="0" min="0"></div>
             <div><label>Lecture Hours</label><input type="number" step="0.5" name="lec_hours" value="0" min="0"></div>
@@ -689,8 +773,7 @@ function render_subject_edit_modal_body(): string
         <input type="hidden" name="subject_id" id="es_id">
         <div class="form-grid cols-2">
             <div><label>Subject Code</label><input type="text" name="subject_code" id="es_code" required></div>
-            <div><label>Units</label><input type="number" step="0.5" name="units" id="es_units" required></div>
-            <div style="grid-column:span 2;"><label>Description</label><input type="text" name="subject_description" id="es_desc" required></div>
+            <div><label>Description</label><input type="text" name="subject_description" id="es_desc" required></div>
             <div><label>Lecture Credit</label><input type="number" step="0.5" name="lec_credit" id="es_lec_credit" min="0"></div>
             <div><label>Lab Credit</label><input type="number" step="0.5" name="lab_credit" id="es_lab_credit" min="0"></div>
             <div><label>Lecture Hours</label><input type="number" step="0.5" name="lec_hours" id="es_lec_hours" min="0"></div>
@@ -706,7 +789,6 @@ function render_subject_edit_modal_body(): string
         document.getElementById('es_id').value = s.id;
         document.getElementById('es_code').value = s.code;
         document.getElementById('es_desc').value = s.desc;
-        document.getElementById('es_units').value = s.units;
         document.getElementById('es_lec_credit').value = s.lec_credit || 0;
         document.getElementById('es_lab_credit').value = s.lab_credit || 0;
         document.getElementById('es_lec_hours').value = s.lec_hours || 0;
@@ -722,11 +804,59 @@ function render_subject_manage_modal_body(array $subjects, bool $canManage = tru
 {
     ob_start(); ?>
     <?php if ($canManage): ?>
-    <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
-        <button type="button" class="btn" data-open="addSubjectModal">
-            <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">add</span> Add Subject
-        </button>
+    <div style="margin-bottom:12px;border:1px solid var(--border);border-radius:6px;padding:8px 12px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <strong style="font-size:13px;color:var(--primary);">➕ Bulk Add Subjects</strong>
+            <span class="badge" style="font-size:10px;">Add multiple at once</span>
+        </div>
+        <form method="post">
+            <input type="hidden" name="action" value="bulk_add_subjects">
+            <div class="table-wrap" style="max-height:320px;overflow-y:auto;">
+            <table id="bulkAddTable" style="width:100%;font-size:12px;">
+                <thead>
+                    <tr>
+                        <th style="width:100px;">Code</th>
+                        <th>Description</th>
+                        <th style="width:60px;">Lec Cr</th>
+                        <th style="width:60px;">Lab Cr</th>
+                        <th style="width:60px;">Lec Hrs</th>
+                        <th style="width:60px;">Lab Hrs</th>
+                        <th style="width:36px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="bulkAddRows">
+                    <tr>
+                        <td><input type="text" name="bulk_code[]" style="width:100%;box-sizing:border-box;font-size:12px;" required></td>
+                        <td><input type="text" name="bulk_desc[]" style="width:100%;box-sizing:border-box;font-size:12px;" required></td>
+                        <td><input type="number" name="bulk_lec_credit[]" step="0.5" value="0" min="0" style="width:100%;box-sizing:border-box;font-size:12px;"></td>
+                        <td><input type="number" name="bulk_lab_credit[]" step="0.5" value="0" min="0" style="width:100%;box-sizing:border-box;font-size:12px;"></td>
+                        <td><input type="number" name="bulk_lec_hours[]" step="0.5" value="0" min="0" style="width:100%;box-sizing:border-box;font-size:12px;"></td>
+                        <td><input type="number" name="bulk_lab_hours[]" step="0.5" value="0" min="0" style="width:100%;box-sizing:border-box;font-size:12px;"></td>
+                        <td><button type="button" class="icon-btn danger" onclick="this.closest('tr').remove()" style="font-size:14px;padding:2px 6px;">✕</button></td>
+                    </tr>
+                </tbody>
+            </table>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px;">
+                <button type="button" class="btn secondary" style="font-size:12px;" onclick="addBulkSubjectRow()">+ Add Row</button>
+                <button class="btn" type="submit" style="font-size:12px;">Add All Subjects</button>
+            </div>
+        </form>
     </div>
+    <script>
+    function addBulkSubjectRow() {
+        var tbody = document.getElementById('bulkAddRows');
+        var row = document.createElement('tr');
+        row.innerHTML = '<td><input type="text" name="bulk_code[]" style="width:100%;box-sizing:border-box;font-size:12px;" required></td>' +
+            '<td><input type="text" name="bulk_desc[]" style="width:100%;box-sizing:border-box;font-size:12px;" required></td>' +
+            '<td><input type="number" name="bulk_lec_credit[]" step="0.5" value="0" min="0" style="width:100%;box-sizing:border-box;font-size:12px;"></td>' +
+            '<td><input type="number" name="bulk_lab_credit[]" step="0.5" value="0" min="0" style="width:100%;box-sizing:border-box;font-size:12px;"></td>' +
+            '<td><input type="number" name="bulk_lec_hours[]" step="0.5" value="0" min="0" style="width:100%;box-sizing:border-box;font-size:12px;"></td>' +
+            '<td><input type="number" name="bulk_lab_hours[]" step="0.5" value="0" min="0" style="width:100%;box-sizing:border-box;font-size:12px;"></td>' +
+            '<td><button type="button" class="icon-btn danger" onclick="this.closest(\'tr\').remove()" style="font-size:14px;padding:2px 6px;">✕</button></td>';
+        tbody.appendChild(row);
+    }
+    </script>
     <?php endif; ?>
 
     <h4 style="margin:8px 0;">Existing Subjects</h4>
@@ -739,7 +869,6 @@ function render_subject_manage_modal_body(array $subjects, bool $canManage = tru
                 <tr>
                     <th data-dt-key="code">Code</th>
                     <th data-dt-key="desc">Description</th>
-                    <th data-dt-key="units">Units</th>
                     <th data-dt-key="leccr">Lec Cr</th>
                     <th data-dt-key="labcr">Lab Cr</th>
                     <th data-dt-key="lech">Lec Hrs</th>
@@ -752,7 +881,6 @@ function render_subject_manage_modal_body(array $subjects, bool $canManage = tru
                 <tr>
                     <td><strong><?= h($s['subject_code']) ?></strong></td>
                     <td><?= h($s['subject_description']) ?></td>
-                    <td><?= h((string)($s['units'] ?? '')) ?></td>
                     <td>
                         <input type="hidden" name="subject_ids[]" value="<?= h((string)$s['subject_id']) ?>">
                         <input type="number" step="0.5" name="lec_credit[<?= h((string)$s['subject_id']) ?>]" value="<?= h((string)($s['lec_credit'] ?? 0)) ?>" min="0" style="width:64px;">

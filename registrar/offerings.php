@@ -211,7 +211,7 @@ $sql = 'SELECT o.id, ay.year_label, t.semester, t.is_active AS term_active,
                p.programs_id, p.program_code, p.program_name,
                d.department_code,
                sec.id AS section_id, sec.year_level, sec.section_name,
-               sub.subject_id, sub.subject_code, sub.subject_description, sub.units,
+               sub.subject_id, sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units,
                st.full_name AS instructor_name, st.staff_id AS instructor_id,
                o.day_of_week, o.time_range, o.room, o.max_slots, o.instructor_id AS off_instructor_id,
                o.curriculum_id, o.term_id, o.section_id AS off_section_id
@@ -258,7 +258,7 @@ $curriculumByProgramYear = [];
 foreach ($programs as $prog) {
     $lines = fetch_all(
         'SELECT pc.curriculum_id, pc.subject_id, pc.year_level, pc.semester,
-                sub.subject_code, sub.subject_description, sub.units
+                sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units
          FROM program_curriculum pc
          INNER JOIN subjects sub ON sub.subject_id = pc.subject_id
          WHERE pc.program_id = :pid

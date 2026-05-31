@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/app.php';
 require_once __DIR__ . '/../includes/components/modal.php';
-require_role(['admin', 'registrar']);
+require_role(['admin', 'registrar', 'cashier']);
 
 $flashes = get_flashes();
 

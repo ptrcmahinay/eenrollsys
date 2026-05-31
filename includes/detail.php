@@ -103,33 +103,13 @@ $types = [
             ['Subject Code', 'subject_code'],
             ['Description', 'subject_description'],
             ['Units', 'units'],
-            ['Status', 'status'],
-            ['Created', 'created_at'],
         ],
         'back' => 'registrar/curriculum.php',
-    ],
-    'term' => [
-        'title' => 'Academic Term Detail',
-        'roles' => ['admin', 'registrar'],
-        'sql'   => 'SELECT t.*, ay.year_label
-                    FROM academic_terms t
-                    INNER JOIN academic_years ay ON ay.id = t.academic_year_id
-                    WHERE t.id = :id',
-        'fields' => [
-            ['Academic Year', 'year_label'],
-            ['Semester', 'semester'],
-            ['Active', 'is_active'],
-            ['Enrollment Open', 'enrollment_open'],
-            ['Start Date', 'start_date'],
-            ['End Date', 'end_date'],
-            ['Status', 'status'],
-        ],
-        'back' => 'registrar/academic_term.php',
     ],
     'curriculum' => [
         'title' => 'Curriculum Line Detail',
         'roles' => ['admin', 'registrar', 'chair'],
-        'sql'   => 'SELECT pc.*, sub.subject_code, sub.subject_description, sub.units,
+        'sql'   => 'SELECT pc.*, sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units,
                            p.program_code, p.program_name, pre.subject_code AS prerequisite_code
                     FROM program_curriculum pc
                     INNER JOIN subjects sub ON sub.subject_id = pc.subject_id

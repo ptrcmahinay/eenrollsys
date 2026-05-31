@@ -46,11 +46,12 @@ if (is_post()) {
         $code    = trim($_POST['program_code']  ?? '');
         $name    = trim($_POST['program_name']  ?? '');
         $major   = trim($_POST['program_major'] ?? '');
+        $labFee  = (float) ($_POST['lab_fee_per_unit'] ?? 0);
         if ($deptId > 0 && $code !== '' && $name !== '') {
             execute_sql(
-                'INSERT INTO programs (department_id, program_code, program_name, program_major, status, created_at)
-                 VALUES (:dept, :code, :name, :major, "active", NOW())',
-                ['dept' => $deptId, 'code' => $code, 'name' => $name, 'major' => $major !== '' ? $major : null]
+                'INSERT INTO programs (department_id, program_code, program_name, program_major, lab_fee_per_unit, status, created_at)
+                 VALUES (:dept, :code, :name, :major, :lf, "active", NOW())',
+                ['dept' => $deptId, 'code' => $code, 'name' => $name, 'major' => $major !== '' ? $major : null, 'lf' => $labFee]
             );
             flash('success', 'Program created.');
         } else {
@@ -64,11 +65,12 @@ if (is_post()) {
         $code    = trim($_POST['program_code']  ?? '');
         $name    = trim($_POST['program_name']  ?? '');
         $major   = trim($_POST['program_major'] ?? '');
+        $labFee  = (float) ($_POST['lab_fee_per_unit'] ?? 0);
         if ($progId > 0 && $deptId > 0 && $code !== '' && $name !== '') {
             execute_sql(
-                'UPDATE programs SET department_id = :dept, program_code = :code, program_name = :name, program_major = :major
+                'UPDATE programs SET department_id = :dept, program_code = :code, program_name = :name, program_major = :major, lab_fee_per_unit = :lf
                  WHERE programs_id = :id',
-                ['dept' => $deptId, 'code' => $code, 'name' => $name, 'major' => $major !== '' ? $major : null, 'id' => $progId]
+                ['dept' => $deptId, 'code' => $code, 'name' => $name, 'major' => $major !== '' ? $major : null, 'lf' => $labFee, 'id' => $progId]
             );
             flash('success', 'Program updated.');
         } else {
@@ -97,36 +99,68 @@ if (is_post()) {
     if ($action === 'add_subject') {
         $code     = trim($_POST['subject_code'] ?? '');
         $desc     = trim($_POST['subject_description'] ?? '');
-        $units    = (float) ($_POST['units'] ?? 3);
         $lecCredit = (float) ($_POST['lec_credit'] ?? 0);
         $labCredit = (float) ($_POST['lab_credit'] ?? 0);
         $lecHours  = (float) ($_POST['lec_hours'] ?? 0);
         $labHours  = (float) ($_POST['lab_hours'] ?? 0);
         if ($code !== '' && $desc !== '') {
-            execute_sql(
-                'INSERT INTO subjects (subject_code, subject_description, units, lec_credit, lab_credit, lec_hours, lab_hours, created_at)
-                 VALUES (:code, :desc, :units, :lc, :lb, :lh, :lbh, NOW())',
-                ['code' => $code, 'desc' => $desc, 'units' => $units, 'lc' => $lecCredit, 'lb' => $labCredit, 'lh' => $lecHours, 'lbh' => $labHours]
-            );
-            flash('success', 'Subject created.');
+            $exists = fetch_one('SELECT subject_id FROM subjects WHERE subject_code = :code', ['code' => $code]);
+            if ($exists) {
+                flash('error', "Subject code \"$code\" already exists.");
+            } else {
+                execute_sql(
+                    'INSERT INTO subjects (subject_code, subject_description, lec_credit, lab_credit, lec_hours, lab_hours, created_at)
+                     VALUES (:code, :desc, :lc, :lb, :lh, :lbh, NOW())',
+                    ['code' => $code, 'desc' => $desc, 'lc' => $lecCredit, 'lb' => $labCredit, 'lh' => $lecHours, 'lbh' => $labHours]
+                );
+                flash('success', 'Subject created.');
+            }
         }
+    }
+
+    if ($action === 'bulk_add_subjects') {
+        $codes  = $_POST['bulk_code'] ?? [];
+        $descs  = $_POST['bulk_desc'] ?? [];
+        $lcArr  = $_POST['bulk_lec_credit'] ?? [];
+        $lbArr  = $_POST['bulk_lab_credit'] ?? [];
+        $lhArr  = $_POST['bulk_lec_hours'] ?? [];
+        $lbhArr = $_POST['bulk_lab_hours'] ?? [];
+        $added = 0; $skipped = 0;
+        $count = count($codes);
+        for ($i = 0; $i < $count; $i++) {
+            $code = trim($codes[$i] ?? '');
+            $desc = trim($descs[$i] ?? '');
+            if ($code === '' || $desc === '') { $skipped++; continue; }
+            $exists = fetch_one('SELECT subject_id FROM subjects WHERE subject_code = :code', ['code' => $code]);
+            if ($exists) { $skipped++; continue; }
+            execute_sql(
+                'INSERT INTO subjects (subject_code, subject_description, lec_credit, lab_credit, lec_hours, lab_hours, created_at)
+                 VALUES (:code, :desc, :lc, :lb, :lh, :lbh, NOW())',
+                [
+                    'code' => $code, 'desc' => $desc,
+                    'lc' => (float) ($lcArr[$i] ?? 0), 'lb' => (float) ($lbArr[$i] ?? 0),
+                    'lh' => (float) ($lhArr[$i] ?? 0), 'lbh' => (float) ($lbhArr[$i] ?? 0),
+                ]
+            );
+            $added++;
+        }
+        flash('success', "$added subject(s) added" . ($skipped > 0 ? ", $skipped skipped." : '.'));
     }
 
     if ($action === 'update_subject') {
         $sid       = (int) ($_POST['subject_id'] ?? 0);
         $code      = trim($_POST['subject_code'] ?? '');
         $desc      = trim($_POST['subject_description'] ?? '');
-        $units     = (float) ($_POST['units'] ?? 3);
         $lecCredit = (float) ($_POST['lec_credit'] ?? 0);
         $labCredit = (float) ($_POST['lab_credit'] ?? 0);
         $lecHours  = (float) ($_POST['lec_hours'] ?? 0);
         $labHours  = (float) ($_POST['lab_hours'] ?? 0);
         if ($sid > 0 && $code !== '' && $desc !== '') {
             execute_sql(
-                'UPDATE subjects SET subject_code = :code, subject_description = :desc, units = :units,
+                'UPDATE subjects SET subject_code = :code, subject_description = :desc,
                  lec_credit = :lc, lab_credit = :lb, lec_hours = :lh, lab_hours = :lbh
                  WHERE subject_id = :id',
-                ['code' => $code, 'desc' => $desc, 'units' => $units, 'lc' => $lecCredit, 'lb' => $labCredit, 'lh' => $lecHours, 'lbh' => $labHours, 'id' => $sid]
+                ['code' => $code, 'desc' => $desc, 'lc' => $lecCredit, 'lb' => $labCredit, 'lh' => $lecHours, 'lbh' => $labHours, 'id' => $sid]
             );
             flash('success', 'Subject updated.');
         }
@@ -247,6 +281,41 @@ if (is_post()) {
         }
     }
 
+    if ($action === 'bulk_add_curriculum') {
+        $progId  = (int) ($_POST['bulk_program_id'] ?? 0);
+        $label   = trim($_POST['bulk_curriculum_label'] ?? '2024');
+        $codes   = $_POST['bulk_curr_code'] ?? [];
+        $years   = $_POST['bulk_curr_year'] ?? [];
+        $sems    = $_POST['bulk_curr_sem'] ?? [];
+        $stands  = $_POST['bulk_curr_standing'] ?? [];
+        if ($progId > 0) {
+            $added = 0; $skipped = 0;
+            $count = count($codes);
+            for ($i = 0; $i < $count; $i++) {
+                $code = trim($codes[$i] ?? '');
+                if ($code === '') { $skipped++; continue; }
+                $subj = fetch_one('SELECT subject_id FROM subjects WHERE subject_code = :code', ['code' => $code]);
+                if (!$subj) { $skipped++; continue; }
+                $sid = (int) $subj['subject_id'];
+                $year = (int) ($years[$i] ?? 1);
+                $sem = $sems[$i] ?? '1st';
+                $standing = trim($stands[$i] ?? '');
+                $dup = fetch_one(
+                    'SELECT curriculum_id FROM program_curriculum WHERE program_id = :pid AND subject_id = :sid AND year_level = :yl AND semester = :sem AND curriculum_label = :label',
+                    ['pid' => $progId, 'sid' => $sid, 'yl' => $year, 'sem' => $sem, 'label' => $label]
+                );
+                if ($dup) { $skipped++; continue; }
+                execute_sql(
+                    'INSERT INTO program_curriculum (program_id, subject_id, year_level, semester, standing, curriculum_label)
+                     VALUES (:pid, :sid, :yl, :sem, :st, :label)',
+                    ['pid' => $progId, 'sid' => $sid, 'yl' => $year, 'sem' => $sem, 'st' => $standing !== '' ? $standing : null, 'label' => $label]
+                );
+                $added++;
+            }
+            flash('success', "$added curriculum line(s) added" . ($skipped > 0 ? ", $skipped skipped." : '.'));
+        }
+    }
+
     /* ── CSV Import ── */
     if ($action === 'import_curriculum' && isset($_FILES['curriculum_csv'])) {
         $progId = (int) ($_POST['import_program_id'] ?? 0);
@@ -278,15 +347,15 @@ if (is_post()) {
                 $imported = 0; $skipped = 0;
                 while (($row = fgetcsv($handle)) !== false) {
                     if (count($row) < 4) { $skipped++; continue; }
-                    $code = trim($row[0]); $desc = trim($row[1]); $units = (float) ($row[2] ?? 3);
+                    $code = trim($row[0]); $desc = trim($row[1]);
                     $year = trim($row[3]); $sem = trim($row[4] ?? '1st');
                     $standing = isset($row[5]) ? trim($row[5]) : '';
 
                     $subj = fetch_one('SELECT subject_id FROM subjects WHERE subject_code = :code', ['code' => $code]);
                     if ($subj === null) {
                         execute_sql(
-                            'INSERT INTO subjects (subject_code, subject_description, units) VALUES (:code, :desc, :units)',
-                            ['code' => $code, 'desc' => $desc, 'units' => $units]
+                            'INSERT INTO subjects (subject_code, subject_description) VALUES (:code, :desc)',
+                            ['code' => $code, 'desc' => $desc]
                         );
                         $subjId = (int) db()->lastInsertId();
                     } else {
@@ -345,7 +414,7 @@ $programs = fetch_all(
      GROUP BY p.programs_id
      ORDER BY d.department_code, p.program_code'
 );
-$subjects = fetch_all('SELECT subject_id, subject_code, subject_description, units, lec_credit, lab_credit, lec_hours, lab_hours FROM subjects ORDER BY subject_code');
+$subjects = fetch_all('SELECT subject_id, subject_code, subject_description, (lec_credit + lab_credit) AS units, lec_credit, lab_credit, lec_hours, lab_hours FROM subjects ORDER BY subject_code');
 
 $curriculum = [];
 $recentOfferings = [];
@@ -361,7 +430,7 @@ if ($selectedProgramId > 0) {
 
     $curriculumSql = 'SELECT pc.curriculum_id, pc.program_id, pc.subject_id, pc.year_level, pc.semester, pc.curriculum_label, pc.standing,
                 pc.prerequisite_subject_id, pc.prerequisite_subject_2_id, pc.prerequisite_subject_3_id,
-                sub.subject_code, sub.subject_description, sub.units, sub.lec_credit, sub.lab_credit, sub.lec_hours, sub.lab_hours, p.program_code,
+                sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units, sub.lec_credit, sub.lab_credit, sub.lec_hours, sub.lab_hours, p.program_code,
                 pre1.subject_code AS prereq1_code, pre2.subject_code AS prereq2_code, pre3.subject_code AS prereq3_code';
     $curriculumJoin = '';
     $curriculumParams = ['pid' => $selectedProgramId];
@@ -420,9 +489,6 @@ ob_start();
     <?php if ($canManage): ?>
     <div class="actions-row">
         <button class="btn" data-open="addProgramModal">Add Program</button>
-
-        <button class="btn secondary" data-open="addSubjectModal">Add Subject</button>
-        <button class="btn secondary" data-open="editSubjectModal">Edit Subject</button>
     </div>
     <?php endif; ?>
 </div>
@@ -434,7 +500,6 @@ ob_start();
         <table>
             <thead>
                 <tr>
-                    <th data-dt-no-sort data-dt-no-export><input type="checkbox" class="dt-bulk-select-all" aria-label="Select all"></th>
                     <th data-dt-key="code" data-dt-filter="select">Program Code</th>
                     <th data-dt-key="name">Program Name</th>
                     <th data-dt-key="dept" data-dt-filter="select">Department</th>
@@ -450,7 +515,6 @@ ob_start();
             <?php foreach ($programs as $prog): ?>
                 <tr data-dt-row-id="<?= h((string)$prog['programs_id']) ?>"
                     data-href="<?= h(app_url('registrar/curriculum.php?program_id=' . $prog['programs_id'])) ?>">
-                    <td><input type="checkbox" class="dt-bulk-row" value="<?= h((string)$prog['programs_id']) ?>" aria-label="Select row"></td>
                     <td data-label="Code"><strong style="color:var(--primary);"><?= h($prog['program_code']) ?></strong></td>
                     <td data-label="Name"><?= h($prog['program_name']) ?><?= $prog['program_major'] ? ' <span style="font-size:11px;color:var(--muted);">— ' . h($prog['program_major']) . '</span>' : '' ?></td>
                     <td data-label="Department"><?= h($prog['department_code'] . ' — ' . $prog['department_name']) ?></td>
@@ -524,6 +588,7 @@ ob_start();
         <button class="btn secondary" data-open="subjectModal">Add Subject</button>
         <button class="btn secondary" data-open="manageSubjectModal">Manage Subjects</button>
         <button class="btn" data-open="curriculumModal">Add Curriculum Line</button>
+        <button class="btn secondary" data-open="bulkCurriculumModal">Bulk Add Lines</button>
         <button class="btn secondary" data-open="importModal">Import CSV</button>
         <a class="btn secondary" href="<?= h(app_url('registrar/curriculum_export.php?program_id=' . $selectedProgramId . '&format=csv')) ?>">Export CSV</a>
     </div>
@@ -584,7 +649,6 @@ ob_start();
                     <tr>
                         <th data-dt-key="code">Code</th>
                         <th data-dt-key="desc">Description</th>
-                        <th data-dt-key="units">Units</th>
                         <th data-dt-key="lec" data-dt-filter="select">Lec Cr</th>
                         <th data-dt-key="lab" data-dt-filter="select">Lab Cr</th>
                         <th data-dt-key="lech">Lec Hrs</th>
@@ -611,7 +675,6 @@ ob_start();
                         <tr>
                             <td><strong><?= h($line['subject_code']) ?></strong></td>
                             <td><?= h($line['subject_description']) ?></td>
-                            <td><?= h((string) $line['units']) ?></td>
                             <td><?= h((string) ($line['lec_credit'] ?? 0)) ?></td>
                             <td><?= h((string) ($line['lab_credit'] ?? 0)) ?></td>
                             <td><?= h((string) ($line['lec_hours'] ?? 0)) ?></td>
@@ -692,6 +755,17 @@ function openEditCurriculum(line) {
     document.getElementById('ec_prereq2').value = line.prerequisite_subject_2_id || '';
     document.getElementById('ec_prereq3').value = line.prerequisite_subject_3_id || '';
     document.getElementById('editCurriculumModal').classList.add('active');
+}
+
+function filterSubjectSelect(input, selectId) {
+    var q = input.value.toLowerCase();
+    var select = document.getElementById(selectId);
+    for (var i = 0; i < select.options.length; i++) {
+        var opt = select.options[i];
+        var code = (opt.getAttribute('data-code') || '').toLowerCase();
+        var desc = (opt.getAttribute('data-desc') || '').toLowerCase();
+        opt.style.display = (code.indexOf(q) !== -1 || desc.indexOf(q) !== -1) ? '' : 'none';
+    }
 }
 </script>
 
@@ -788,7 +862,7 @@ ob_start(); ?>
             <input type="file" name="curriculum_csv" accept=".csv" required>
         </div>
     </div>
-    <p class="helper" style="margin-top:8px;">CSV format: <code>subject_code, description, units, year_level, semester, standing(optional)</code></p>
+    <p class="helper" style="margin-top:8px;">CSV format: <code>subject_code, description, year_level, semester, standing(optional)</code></p>
     <div class="form-actions"><button class="btn" type="submit">Import CSV</button></div>
 </form>
 <?php $importForm = ob_get_clean();
@@ -797,9 +871,8 @@ $modals = [
     render_modal('subjectModal',    'Add Subject',             render_curriculum_subject_form()),
     render_modal('manageSubjectModal', 'Manage Subjects',      render_subject_manage_modal_body($subjects, $canManage), true),
     render_modal('curriculumModal', 'Add Curriculum Line', render_curriculum_line_form_multi_prereq($programs, $subjects), true),
-    render_modal('addProgramModal', 'Add Program', $addProgramForm),
+    render_modal('bulkCurriculumModal', 'Bulk Add Curriculum Lines', render_bulk_curriculum_form($programs, $subjects), true),
     render_modal('editProgramModal', 'Edit Program', $editProgramForm),
-    render_modal('editSubjectModal', 'Edit Subject', render_subject_edit_modal_body()),
     render_modal('importModal', 'Import Curriculum CSV', $importForm),
     render_modal(
         'editCurriculumModal',

@@ -23,7 +23,12 @@ function db(): PDO
         ensure_email_verification_columns();
         ensure_fee_items_table();
         ensure_curriculum_columns();
+        ensure_drop_units_column();
         ensure_student_subjects_columns();
+        ensure_fee_workflow_columns();
+        ensure_add_drop_table();
+        ensure_processing_columns();
+        ensure_payments_table();
     }
     return $pdo;
 }
@@ -798,7 +803,7 @@ function regular_offerings_for_student(int $studentId, int $termId, int $section
 
     $targets = get_student_program_targets($student);
     return fetch_all(
-        'SELECT o.*, sub.subject_code, sub.subject_description, sub.units,
+         'SELECT o.*, sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units, sub.lec_credit, sub.lab_credit,
                 pc.curriculum_id, pc.prerequisite_subject_id,
                 sec.section_name, sec.year_level,
                 CONCAT(COALESCE(st.full_name, "TBA")) AS instructor_name
@@ -832,7 +837,7 @@ function irregular_offerings_for_student(int $studentId, int $termId): array
 
     $gradeLookup = student_grade_lookup($studentId);
     $rows = fetch_all(
-        'SELECT o.*, sub.subject_code, sub.subject_description, sub.units,
+         'SELECT o.*, sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units, sub.lec_credit, sub.lab_credit,
                 pc.curriculum_id, pc.prerequisite_subject_id, pc.year_level AS curriculum_year_level,
                 sec.section_name, sec.year_level,
                 CONCAT(COALESCE(st.full_name, "TBA")) AS instructor_name
@@ -910,10 +915,8 @@ function financial_profile(array $student, ?array $term = null): array
 
     if ($override !== '' && $override !== 'auto') {
         $status = $override;
-    } elseif ($yearsInCollege <= 4) {
+    } elseif ($yearsInCollege <= 5) {
         $status = 'free';
-    } elseif ($yearsInCollege <= 6) {
-        $status = 'extension_tuition';
     } else {
         $status = 'tuition';
     }
@@ -923,11 +926,7 @@ function financial_profile(array $student, ?array $term = null): array
     return [
         'years_in_college' => $yearsInCollege,
         'status' => $status,
-        'label' => match ($status) {
-            'free' => 'RA 10931 (Free Education)',
-            'extension_tuition' => 'Extension with Tuition',
-            default => 'Tuition Paying',
-        },
+        'label' => $status === 'free' ? 'RA 10931 (Free Education)' : 'Tuition Paying',
         'tuition_per_unit' => $tuitionPerUnit,
     ];
 }
@@ -935,19 +934,78 @@ function financial_profile(array $student, ?array $term = null): array
 function calculate_request_totals(int $studentId, array $offeringIds): array
 {
     if ($offeringIds === []) {
-        return ['units' => 0.0, 'amount' => 0.0, 'financial' => financial_profile(fetch_one('SELECT * FROM students WHERE id = :id', ['id' => $studentId]) ?? ['entry_year' => date('Y'), 'ra10931_override' => 'auto'])];
+        $student = fetch_one('SELECT * FROM students WHERE id = :id', ['id' => $studentId]) ?? ['entry_year' => date('Y'), 'ra10931_override' => 'auto'];
+        return ['units' => 0.0, 'amount' => 0.0, 'lab_fee' => 0.0, 'financial' => financial_profile($student)];
     }
 
     $placeholders = implode(',', array_fill(0, count($offeringIds), '?'));
-    $statement = db()->prepare("SELECT SUM(sub.units) AS total_units FROM section_subject_offerings o INNER JOIN subjects sub ON sub.subject_id = o.subject_id WHERE o.id IN ($placeholders)");
+    $statement = db()->prepare("SELECT SUM(sub.lec_credit + sub.lab_credit) AS total_units FROM section_subject_offerings o INNER JOIN subjects sub ON sub.subject_id = o.subject_id WHERE o.id IN ($placeholders)");
     $statement->execute($offeringIds);
     $totalUnits = (float) ($statement->fetchColumn() ?: 0);
 
     $student = fetch_one('SELECT * FROM students WHERE id = :id', ['id' => $studentId]) ?? ['entry_year' => date('Y'), 'ra10931_override' => 'auto'];
     $financial = financial_profile($student);
-    $totalAmount = in_array($financial['status'], ['extension_tuition', 'tuition'], true) ? ($totalUnits * $financial['tuition_per_unit']) : 0.0;
 
-    return ['units' => $totalUnits, 'amount' => $totalAmount, 'financial' => $financial];
+    $term = current_term();
+    $feeItems = fee_items_for_enrollment((int) $student['program_id'], (int) $student['year_level'], (string) $term['semester']);
+    $tuitionPerUnit = 0;
+    $labFeeRate = 0;
+    if (isset($feeItems['assessment'])) {
+        foreach ($feeItems['assessment'] as $fi) {
+            if (strcasecmp($fi['fee_name'], 'tuition') === 0) {
+                $tuitionPerUnit = (float) $fi['amount'];
+                break;
+            }
+        }
+    }
+    if (isset($feeItems['laboratory'])) {
+        foreach ($feeItems['laboratory'] as $fi) {
+            $labFeeRate = (float) $fi['amount'];
+            break;
+        }
+    }
+
+    $tuitionAmount = ($financial['status'] === 'tuition') ? ($totalUnits * $tuitionPerUnit) : 0.0;
+
+    $labCredits = total_lab_credits($offeringIds);
+    $labFee = $labCredits * $labFeeRate;
+
+    $totalAmount = $tuitionAmount + $labFee;
+
+    return ['units' => $totalUnits, 'amount' => $totalAmount, 'tuition' => $tuitionAmount, 'lab_fee' => $labFee, 'lab_credits' => $labCredits, 'financial' => $financial];
+}
+
+function lab_fee_per_unit(int $programId): float
+{
+    $prog = fetch_one('SELECT lab_fee_per_unit FROM programs WHERE programs_id = :id', ['id' => $programId]);
+    return (float) ($prog['lab_fee_per_unit'] ?? 0);
+}
+
+function total_lab_credits(array $offeringIds): float
+{
+    if ($offeringIds === []) return 0.0;
+    $ph = implode(',', array_fill(0, count($offeringIds), '?'));
+    $st = db()->prepare("SELECT SUM(sub.lab_credit) FROM section_subject_offerings o INNER JOIN subjects sub ON sub.subject_id = o.subject_id WHERE o.id IN ($ph)");
+    $st->execute($offeringIds);
+    return (float) ($st->fetchColumn() ?: 0);
+}
+
+function fee_items_for_enrollment(int $programId, int $yearLevel, string $semester): array
+{
+    $rows = fetch_all(
+        'SELECT id, category, fee_name, amount, is_mandatory FROM fee_items
+         WHERE is_active = 1 AND (program_id IS NULL OR program_id = :pid)
+           AND (year_level IS NULL OR year_level = :yl)
+           AND (semester IS NULL OR semester = :sem)
+         ORDER BY category, is_mandatory DESC',
+        ['pid' => $programId, 'yl' => $yearLevel, 'sem' => $semester]
+    );
+    $grouped = ['laboratory' => [], 'other' => [], 'assessment' => []];
+    foreach ($rows as $r) {
+        $cat = $r['category'];
+        if (isset($grouped[$cat])) $grouped[$cat][] = $r;
+    }
+    return $grouped;
 }
 
 function existing_request_for_student_term(int $studentId, int $termId): ?array
@@ -1052,7 +1110,7 @@ function create_enrollment_request_draft(int $studentId, int $termId, int $secti
 function enrollment_request_items(int $requestId): array
 {
     return fetch_all(
-        'SELECT eri.*, o.section_id, o.curriculum_id, o.subject_id, sub.subject_code, sub.subject_description, sub.units,
+        'SELECT eri.*, o.section_id, o.curriculum_id, o.subject_id, sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units, sub.lec_credit, sub.lab_credit,
                 pc.prerequisite_subject_id,
                 sec.section_name, sec.year_level,
                 o.day_of_week, o.time_range, o.room,
@@ -1124,7 +1182,9 @@ function request_workflow_label(string $status): string
         'submitted' => 'Submitted to Adviser',
         'adviser_approved' => 'Approved by Adviser',
         'chair_approved' => 'Approved by Department Chair',
-        'registrar_approved' => 'Approved by Registrar / Enrolled',
+        'registrar_forwarded' => 'Forwarded to Cashier',
+        'cashier_approved' => 'Approved by Cashier',
+        'registrar_approved' => 'Enrolled',
         'rejected' => 'Rejected',
         'cancelled' => 'Cancelled',
         default => ucfirst(str_replace('_', ' ', $status)),
@@ -1369,10 +1429,56 @@ function cancel_request(int $requestId): void
     log_audit($requestId, 'student_cancel', 'student', $req ? $req['workflow_status'] : null, 'cancelled', null);
 }
 
+function forward_to_cashier(int $requestId): void
+{
+    $req = fetch_one('SELECT * FROM enrollment_requests WHERE id = :id', ['id' => $requestId]);
+    if (!$req || $req['workflow_status'] !== 'chair_approved') return;
+
+    execute_sql(
+        'UPDATE enrollment_requests SET workflow_status = "registrar_forwarded", updated_at = NOW() WHERE id = :id',
+        ['id' => $requestId]
+    );
+    log_audit($requestId, 'registrar_forward', 'registrar', 'chair_approved', 'registrar_forwarded', null);
+
+    send_enrollment_notification((int) $req['student_id'],
+        'Enrollment Forwarded to Cashier',
+        'Your enrollment request has been forwarded to the Cashier for fee assessment.'
+    );
+    notify_staff_by_role('cashier',
+        'Enrollment Request Pending Fee Approval',
+        'An enrollment request has been forwarded by the Registrar for fee processing.'
+    );
+}
+
+function cashier_approve_request(int $requestId): void
+{
+    $req = fetch_one('SELECT * FROM enrollment_requests WHERE id = :id', ['id' => $requestId]);
+    if (!$req || $req['workflow_status'] !== 'registrar_forwarded') return;
+
+    execute_sql(
+        'UPDATE enrollment_requests SET workflow_status = "cashier_approved", cashier_processed_at = NOW(), cashier_processed_by = :uid, updated_at = NOW() WHERE id = :id',
+        ['id' => $requestId, 'uid' => (int) ($_SESSION['user_id'] ?? 0)]
+    );
+    log_audit($requestId, 'cashier_approve', 'cashier', 'registrar_forwarded', 'cashier_approved', null);
+
+    send_enrollment_notification((int) $req['student_id'],
+        'Enrollment Approved by Cashier',
+        'Your enrollment has been approved by the Cashier. It is now ready for Registrar finalization.'
+    );
+    notify_staff_by_role('registrar',
+        'Enrollment Ready for Finalization',
+        'An enrollment request has been approved by the Cashier and is ready for registrar finalization.'
+    );
+}
+
 function finalize_request_by_registrar(int $requestId, int $sectionId): bool
 {
     $request = fetch_one('SELECT * FROM enrollment_requests WHERE id = :id', ['id' => $requestId]);
     if ($request === null) {
+        return false;
+    }
+
+    if (!in_array($request['workflow_status'], ['cashier_approved', 'chair_approved', 'registrar_forwarded'], true)) {
         return false;
     }
 
@@ -1390,7 +1496,8 @@ function finalize_request_by_registrar(int $requestId, int $sectionId): bool
             ['section_id' => $sectionId, 'id' => $requestId, 'user_id' => (int) ($_SESSION['user_id'] ?? 0)]
         );
 
-        log_audit($requestId, 'registrar_finalize', 'registrar', 'chair_approved', 'registrar_approved', null);
+        $prevStatus = $request['workflow_status'];
+        log_audit($requestId, 'registrar_finalize', 'registrar', $prevStatus, 'registrar_approved', null);
 
         sync_student_section((int) $request['student_id'], $sectionId);
 
@@ -1470,7 +1577,7 @@ function registration_form_data(int $studentId, int $termId): array
     ) ?? [];
 
     $rows = fetch_all(
-        'SELECT ss.*, sub.subject_code, sub.subject_description, sub.units,
+        'SELECT ss.*, sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units, sub.lab_credit,
                 o.day_of_week, o.time_range, o.room,
                 sec.section_name
          FROM student_subjects ss
@@ -1483,8 +1590,10 @@ function registration_form_data(int $studentId, int $termId): array
     );
 
     $totalUnits = 0.0;
+    $totalLabCredits = 0.0;
     foreach ($rows as $row) {
         $totalUnits += (float) $row['units'];
+        $totalLabCredits += (float) ($row['lab_credit'] ?? 0);
     }
 
     $financial = financial_profile($student ?: ['entry_year' => date('Y'), 'ra10931_override' => 'auto']);
@@ -1495,6 +1604,7 @@ function registration_form_data(int $studentId, int $termId): array
         'student' => $student,
         'rows' => $rows,
         'total_units' => $totalUnits,
+        'total_lab_credits' => $totalLabCredits,
         'tuition' => $tuition,
         'other_fees' => $otherFees,
         'total_amount' => $tuition + $otherFees,
@@ -1565,7 +1675,7 @@ function checklist_data(int $studentId): array
     $gradeLookup = student_grade_lookup($studentId);
     $rows = fetch_all(
         'SELECT pc.curriculum_id, pc.year_level, pc.semester, pc.prerequisite_subject_id,
-                sub.subject_id, sub.subject_code, sub.subject_description, sub.units
+                sub.subject_id, sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units
          FROM program_curriculum pc
          INNER JOIN subjects sub ON sub.subject_id = pc.subject_id
          WHERE pc.program_id = :program_id
@@ -1596,7 +1706,8 @@ function workflow_badge_class(string $status): string
 {
     return match ($status) {
         'registrar_approved' => 'success',
-        'chair_approved', 'adviser_approved' => 'warning',
+        'chair_approved', 'adviser_approved', 'cashier_approved' => 'warning',
+        'registrar_forwarded' => 'info',
         'rejected', 'cancelled' => 'danger',
         'draft' => 'secondary',
         default => 'info',
@@ -1710,7 +1821,7 @@ function create_add_drop_request(int $studentId, int $termId, string $actionType
 function add_drop_request_items(int $studentId, int $termId, string $workflowStatus = ''): array
 {
     $sql = 'SELECT adr.*,
-                    sub.subject_code, sub.subject_description, sub.units AS subject_units,
+                    sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS subject_units,
                     sec.section_name, sec.year_level, o.day_of_week, o.time_range,
                     CONCAT(COALESCE(st.full_name, "TBA")) AS instructor_name
              FROM add_drop_requests adr

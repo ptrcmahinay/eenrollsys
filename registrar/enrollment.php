@@ -11,6 +11,13 @@ if (is_post()) {
     verify_csrf();
     $action = trim($_POST['action'] ?? '');
 
+    if ($action === 'forward_to_cashier' && in_array($_SESSION['role'] ?? '', ['admin', 'registrar'], true)) {
+        $requestId = (int) ($_POST['request_id'] ?? 0);
+        forward_to_cashier($requestId);
+        flash('success', 'Request forwarded to Cashier.');
+        redirect('registrar/enrollment.php?type=' . $requestType . ($_SERVER['QUERY_STRING'] ? '&' . $_SERVER['QUERY_STRING'] : ''));
+    }
+
     if ($action === 'finalize' && in_array($_SESSION['role'] ?? '', ['admin', 'registrar'], true)) {
         $requestId = (int) ($_POST['request_id'] ?? 0);
         $sectionId = (int) ($_POST['section_id'] ?? 0);
@@ -21,6 +28,11 @@ if (is_post()) {
         }
         if ($requestType === 'enrollment') {
             if ($requestId > 0 && $sectionId > 0) {
+                $req = fetch_one('SELECT * FROM enrollment_requests WHERE id = :id', ['id' => $requestId]);
+                if (!$req || $req['workflow_status'] !== 'cashier_approved') {
+                    flash('error', 'Request must be cashier-approved before finalization.');
+                    redirect('registrar/enrollment.php?type=' . $requestType . ($_SERVER['QUERY_STRING'] ? '&' . $_SERVER['QUERY_STRING'] : ''));
+                }
                 if (finalize_request_by_registrar($requestId, $sectionId)) {
                     flash('success', 'Student enrolled successfully.');
                 } else {
@@ -92,7 +104,7 @@ $filterSearch = trim($_GET['q'] ?? '');
 $filterTerm   = (int) ($_GET['term_id'] ?? 0);
 
 if ($requestType === 'enrollment') {
-    $validStatuses = ['submitted','adviser_approved','chair_approved','registrar_approved','rejected','cancelled'];
+    $validStatuses = ['submitted','adviser_approved','chair_approved','registrar_forwarded','cashier_approved','registrar_approved','rejected','cancelled'];
     if (!in_array($filterStatus, $validStatuses, true)) $filterStatus = '';
 
     $terms = fetch_all(
@@ -125,7 +137,7 @@ if ($requestType === 'enrollment') {
         $params['q']  = '%' . $filterSearch . '%';
         $params['q2'] = '%' . $filterSearch . '%';
     }
-    $sql .= ' ORDER BY FIELD(er.workflow_status,"chair_approved","adviser_approved","submitted","registrar_approved","rejected","cancelled"), er.updated_at DESC';
+    $sql .= ' ORDER BY FIELD(er.workflow_status,"cashier_approved","chair_approved","registrar_forwarded","adviser_approved","submitted","registrar_approved","rejected","cancelled"), er.updated_at DESC';
     $requests = fetch_all($sql, $params);
 
     $countSql = 'SELECT er.workflow_status, COUNT(*) AS cnt FROM enrollment_requests er
@@ -151,7 +163,7 @@ if ($requestType === 'enrollment') {
     $sql = 'SELECT adr.*,
                    s.student_number, s.full_name, s.year_level, s.id AS student_id,
                    p.program_code, p.programs_id AS program_id,
-                   sub.subject_code, sub.subject_description, sub.units AS subject_units,
+                   sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS subject_units,
                    sec.section_name,
                    ay.year_label, t.semester
             FROM add_drop_requests adr
@@ -190,7 +202,7 @@ ob_start();
 <div class="page-header">
     <div>
         <h1><?= $requestType === 'enrollment' ? 'Enrollment Submissions' : 'Add/Drop Requests' ?></h1>
-        <p><?= $requestType === 'enrollment' ? 'View all student enrollment requests, approve or reject, and bulk finalize chair-approved requests.' : 'Finalize approved add/drop requests to update student enrollments.' ?></p>
+        <p><?= $requestType === 'enrollment' ? 'View all student enrollment requests, approve or reject, forward to cashier, and finalize cashier-approved requests.' : 'Finalize approved add/drop requests to update student enrollments.' ?></p>
     </div>
 </div>
 
@@ -229,7 +241,9 @@ ob_start();
     <?php
     $tabDefs = [
         ''                   => ['All',             $totalAll],
+        'cashier_approved'   => ['Cashier Approved',$countMap['cashier_approved']   ?? 0],
         'chair_approved'     => ['Chair Approved',  $countMap['chair_approved']     ?? 0],
+        'registrar_forwarded'=> ['With Cashier',    $countMap['registrar_forwarded']?? 0],
         'adviser_approved'   => ['Adviser Approved',$countMap['adviser_approved']   ?? 0],
         'submitted'          => ['Submitted',       $countMap['submitted']          ?? 0],
         'registrar_approved' => [$requestType === 'enrollment' ? 'Enrolled' : 'Finalized', $countMap['registrar_approved'] ?? 0],
@@ -255,14 +269,14 @@ ob_start();
 </div>
 
 <!-- Bulk finalize form -->
-<?php if ($filterStatus === '' || $filterStatus === 'chair_approved'): ?>
+<?php if ($filterStatus === '' || $filterStatus === 'cashier_approved'): ?>
     <div class="card slim" style="margin-bottom:14px;">
         <form method="post" id="bulkForm">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="bulk_finalize">
             <input type="hidden" name="type" value="<?= h($requestType) ?>">
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-                <button type="button" class="btn small secondary" onclick="document.querySelectorAll('.bulk-select').forEach(c=>c.checked=true)">Select All Chair-Approved</button>
+                <button type="button" class="btn small secondary" onclick="document.querySelectorAll('.bulk-select').forEach(c=>c.checked=true)">Select All for Finalize</button>
                 <button type="button" class="btn small secondary" onclick="document.querySelectorAll('.bulk-select').forEach(c=>c.checked=false)">Deselect All</button>
                 <select name="bulk_section_id" required style="padding:6px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;">
                     <option value="">Select section for bulk enrollment…</option>
@@ -294,13 +308,14 @@ ob_start();
 
     $advState = $req['adviser_status'] === 'approved' ? 'done' : ($advRejected ? 'rejected' : ($ws === 'submitted' ? 'active' : ''));
     $chState  = $advRejected ? 'blocked' : ($req['chair_status'] === 'approved' ? 'done' : ($chRejected ? 'rejected' : ($ws === 'adviser_approved' ? 'active' : '')));
-    $regState = ($advRejected || $chRejected) ? 'blocked' : ($req['registrar_status'] === 'approved' ? 'done' : ($regRejected ? 'rejected' : ($ws === 'chair_approved' ? 'active' : '')));
+    $regFwdState = ($advRejected || $chRejected) ? 'blocked' : ($ws === 'registrar_forwarded' ? 'active' : (in_array($ws, ['cashier_approved','registrar_approved']) ? 'done' : ''));
+    $cashState = ($advRejected || $chRejected) ? 'blocked' : ($ws === 'cashier_approved' ? 'done' : ($ws === 'registrar_forwarded' ? 'active' : ($ws === 'registrar_approved' ? 'done' : '')));
     $steps = [
-        ['label'=>'Submitted',   'state'=>'done',     'remark'=>''],
-        ['label'=>'Adviser',     'state'=>$advState,  'remark'=>$req['adviser_remark']   ?: ''],
-        ['label'=>'Dept. Chair', 'state'=>$chState,   'remark'=>$req['chair_remark']     ?: ''],
-        ['label'=>'Registrar',   'state'=>$regState,  'remark'=>$req['registrar_remark'] ?: ''],
-        ['label'=>$requestType === 'enrollment' ? 'Enrolled' : 'Finalized',    'state'=>$isFinal ? 'done' : ($advRejected || $chRejected || $regRejected ? 'blocked' : ''), 'remark'=>''],
+        ['label'=>'Submitted',       'state'=>'done',           'remark'=>''],
+        ['label'=>'Adviser',         'state'=>$advState,        'remark'=>$req['adviser_remark']   ?: ''],
+        ['label'=>'Dept. Chair',     'state'=>$chState,         'remark'=>$req['chair_remark']     ?: ''],
+        ['label'=>'Cashier',         'state'=>$cashState,       'remark'=>''],
+        ['label'=>$requestType === 'enrollment' ? 'Enrolled' : 'Finalized', 'state'=>$isFinal ? 'done' : ($advRejected || $chRejected || $regRejected ? 'blocked' : ''), 'remark'=>''],
     ];
 ?>
     <div class="card enroll-card status-<?= h($ws) ?>">
@@ -323,10 +338,12 @@ ob_start();
             <span class="badge <?= h(workflow_badge_class($ws)) ?>"><?= h(request_workflow_label($ws)) ?></span>
         </div>
 
-        <?php if ($ws === 'chair_approved'): ?>
+        <?php if ($ws === 'cashier_approved'): ?>
             <label style="display:inline-flex;align-items:center;gap:6px;padding:4px 8px;background:#f0fdf4;border-radius:6px;font-size:12px;font-weight:600;color:#0f5132;">
                 <input type="checkbox" class="bulk-select" value="<?= h($req['id']) ?>"> Select for bulk finalize
             </label>
+        <?php elseif ($ws === 'registrar_forwarded'): ?>
+            <span class="badge info" style="font-size:11px;">⏳ Awaiting Cashier Approval</span>
         <?php endif; ?>
 
         <div class="stepper">
@@ -354,8 +371,27 @@ ob_start();
         </div>
 
         <?php if ($ws === 'chair_approved'): ?>
-            <div class="card slim" style="margin-top:12px;border-left:4px solid #6366f1;">
+            <div class="card slim" style="margin-top:12px;border-left:4px solid #f59e0b;">
                 <h4>Registrar Action</h4>
+                <form method="post" style="display:inline;">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="forward_to_cashier">
+                    <input type="hidden" name="type" value="<?= h($requestType) ?>">
+                    <input type="hidden" name="request_id" value="<?= h($req['id']) ?>">
+                    <button class="btn small" type="submit">Forward to Cashier</button>
+                </form>
+                <form method="post" style="display:inline;margin-left:8px;">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="reject">
+                    <input type="hidden" name="type" value="<?= h($requestType) ?>">
+                    <input type="hidden" name="request_id" value="<?= h($req['id']) ?>">
+                    <input type="text" name="registrar_remark" placeholder="Rejection reason…" style="padding:6px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;width:200px;">
+                    <button class="btn small danger" type="submit">Reject</button>
+                </form>
+            </div>
+        <?php elseif ($ws === 'cashier_approved'): ?>
+            <div class="card slim" style="margin-top:12px;border-left:4px solid #6366f1;">
+                <h4>Registrar Action — Finalize Enrollment</h4>
                 <form method="post" style="display:inline;">
                     <?= csrf_field() ?>
                     <input type="hidden" name="action" value="finalize">

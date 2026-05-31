@@ -12,7 +12,7 @@ switch ($role) {
             ['label' => 'Users',           'path' => 'admin/users.php',            'icon' => 'group'],
             ['label' => 'Staff',           'path' => 'admin/staff.php',            'icon' => 'badge'],
             ['label' => 'Students',        'path' => 'admin/students.php',         'icon' => 'school'],
-            ['label' => 'Audit Log',       'path' => 'admin/audit_log.php',        'icon' => 'history'],
+            // ['label' => 'Audit Log',       'path' => 'admin/audit_log.php',        'icon' => 'history'],
             ['type' => 'header', 'label' => 'Academic'],
             ['label' => 'Program & Curriculum',      'path' => 'registrar/curriculum.php',        'icon' => 'menu_book'],
             ['label' => 'Departments & Sections', 'path' => 'registrar/departments.php', 'icon' => 'domain'],
@@ -63,7 +63,6 @@ switch ($role) {
         $menu = [
             ['label' => 'Dashboard',           'path' => 'chair/dashboard.php',         'icon' => 'dashboard'],
             ['type' => 'header', 'label' => 'Academic'],
-            ['label' => 'Subject Offerings',   'path' => 'registrar/offerings.php',     'icon' => 'event_note'],
             ['label' => 'Curriculum',   'path' => 'registrar/curriculum.php',  'icon' => 'menu_book'],
             ['type' => 'header', 'label' => 'Enrollment'],
             ['label' => 'Enrollment Requests', 'path' => 'chair/requests.php',           'icon' => 'approval'],
@@ -101,6 +100,7 @@ switch ($role) {
         $menu = [
             ['label' => 'Dashboard', 'path' => 'cashier/dashboard.php', 'icon' => 'dashboard'],
             ['label' => 'Payments', 'path' => 'cashier/payments.php', 'icon' => 'payments'],
+            ['label' => 'Fee Management', 'path' => 'admin/fees.php', 'icon' => 'receipt_long'],
             // ['type' => 'divider'],
             // ['label' => 'Settings', 'path' => 'includes/settings.php', 'icon' => 'settings'],
         ];
@@ -115,7 +115,6 @@ switch ($role) {
             ['label' => 'Current Subjects',  'path' => 'student/subjects.php',         'icon' => 'menu_book'],
             ['type' => 'header', 'label' => 'Records'],
             ['label' => 'Grades / COG',      'path' => 'student/grades.php',           'icon' => 'grading'],
-            ['label' => 'Checklist',         'path' => 'checklist.php',                'icon' => 'checklist'],
             ['label' => 'My Curriculum',    'path' => 'registrar/curriculum.php',     'icon' => 'menu_book'],
             ['type' => 'header', 'label' => 'Enrollment'],
             ['label' => 'Online Enrollment', 'path' => 'student/enrollment.php',       'icon' => 'app_registration'],

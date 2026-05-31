@@ -72,6 +72,22 @@ if (is_post()) {
         }
 
         $offeringIds = array_values(array_unique(array_filter($offeringIds)));
+        // Block duplicate subject selection across sections
+        if (student_is_irregular((int) $student['id'])) {
+            $offeringSubjectMap = [];
+            foreach ($allowed as $off) {
+                $offeringSubjectMap[(int) $off['id']] = (int) $off['subject_id'];
+            }
+            $seenSubjects = [];
+            foreach ($offeringIds as $oid) {
+                $sid = $offeringSubjectMap[$oid] ?? 0;
+                if ($sid && isset($seenSubjects[$sid])) {
+                    flash('error', 'You cannot select the same subject from multiple sections. Please choose only one offering per subject.');
+                    redirect('student/enrollment.php');
+                }
+                if ($sid) $seenSubjects[$sid] = true;
+            }
+        }
         if ($sectionId <= 0 || $offeringIds === []) {
             flash('error', 'Select a section and at least one valid subject offering.');
             redirect('student/enrollment.php');
@@ -210,7 +226,7 @@ if (is_post()) {
 
         if ($requestedStatus === 'irregular' && count($offeringIds) > 0) {
             $placeholders = implode(',', array_fill(0, count($offeringIds), '?'));
-            $stmt = db()->prepare("SELECT COALESCE(SUM(sub.units), 0) AS total FROM section_subject_offerings o INNER JOIN subjects sub ON sub.subject_id = o.subject_id WHERE o.id IN ($placeholders)");
+            $stmt = db()->prepare("SELECT COALESCE(SUM(sub.lec_credit + sub.lab_credit), 0) AS total FROM section_subject_offerings o INNER JOIN subjects sub ON sub.subject_id = o.subject_id WHERE o.id IN ($placeholders)");
             $stmt->execute($offeringIds);
             $selectedUnits = (float) $stmt->fetchColumn();
             if ($selectedUnits > 27) {
@@ -261,6 +277,26 @@ if ($resubmitSource) {
 
 $financial = financial_profile($student, $currentTerm);
 $otherFees = (float) setting('other_school_fees', '2500');
+$feeItems = fee_items_for_enrollment((int) $student['program_id'], (int) $student['year_level'], (string) $currentTerm['semester']);
+
+$tuitionPerUnit = 0;
+$labFeeRate = 0;
+$labFeeName = 'Laboratory Fee';
+if (isset($feeItems['assessment'])) {
+    foreach ($feeItems['assessment'] as $fi) {
+        if (strcasecmp($fi['fee_name'], 'tuition') === 0) {
+            $tuitionPerUnit = (float) $fi['amount'];
+            break;
+        }
+    }
+}
+if (isset($feeItems['laboratory'])) {
+    foreach ($feeItems['laboratory'] as $fi) {
+        $labFeeRate = (float) $fi['amount'];
+        $labFeeName = ucfirst($fi['fee_name']) . ' Fee';
+        break;
+    }
+}
 
 $draftRequest = fetch_one(
     'SELECT * FROM enrollment_requests WHERE student_id = :student_id AND term_id = :term_id AND workflow_status = "draft" ORDER BY id DESC LIMIT 1',
@@ -284,6 +320,36 @@ if ($resubmitSource) {
 $showWizard = ($editingDraft !== null) || $resubmitParam || ($draftRequest === null && !$latestRequest) ||
     ($latestRequest !== null && in_array($latestRequest['workflow_status'], ['rejected', 'cancelled'], true) && isset($_GET['new']));
 
+$initialTotalUnits = 0;
+$initialLabCredits = 0;
+$feeItemsTotalDisplay = 0;
+foreach ($feeItems as $cat => $items) {
+    if ($cat === 'laboratory') continue;
+    foreach ($items as $fi) {
+        if ($cat === 'assessment' && strcasecmp($fi['fee_name'], 'tuition') === 0) continue;
+        $feeItemsTotalDisplay += (float) $fi['amount'];
+    }
+}
+if ($recommendedStatus === 'regular') {
+    foreach ($regularPreview as $r) {
+        $initialTotalUnits += (float) $r['units'];
+        $initialLabCredits += (float) ($r['lab_credit'] ?? 0);
+    }
+} elseif ($resubmitSource) {
+    foreach ($resubmitItems as $it) {
+        $initialTotalUnits += (float) $it['units'];
+        $initialLabCredits += (float) ($it['lab_credit'] ?? 0);
+    }
+} elseif ($editingDraft) {
+    foreach ($draftItems as $it) {
+        $initialTotalUnits += (float) $it['units'];
+        $initialLabCredits += (float) ($it['lab_credit'] ?? 0);
+    }
+}
+$initialTuition = $initialTotalUnits * $tuitionPerUnit;
+$initialLabFee = $initialLabCredits * $labFeeRate;
+$initialTotal = $initialTuition + $initialLabFee + $feeItemsTotalDisplay + $otherFees;
+
 ob_start();
 ?>
 <div class="page-header">
@@ -298,7 +364,7 @@ ob_start();
         <h3>Active request already exists</h3>
         <p class="helper">Wait for the current request to finish, or cancel it first if cancellation is still allowed.</p>
         <p><strong>Latest request:</strong> <span class="badge <?= h(workflow_badge_class((string) $latestRequest['workflow_status'])) ?>"><?= h(request_workflow_label((string) $latestRequest['workflow_status'])) ?></span></p>
-        <p class="helper">Requested status: <?= h($latestRequest['requested_status']) ?> Â· Total units: <?= h($latestRequest['total_units']) ?> Â· Amount: â‚±<?= h(format_money($latestRequest['total_amount'])) ?></p>
+        <p class="helper">Requested status: <?= h($latestRequest['requested_status']) ?> Total units: <?= h($latestRequest['total_units']) ?> Amount: <?= h(format_money($latestRequest['total_amount'])) ?></p>
         <?php if (can_user_cancel_request($latestRequest)): ?>
             <form method="post">
                 <?= csrf_field() ?>
@@ -376,10 +442,8 @@ ob_start();
                         <div class="item">
                             <div class="k">Student Status</div>
                             <div class="v">
-                                <select name="requested_status" id="statusSelect" style="width:100%;">
-                                    <option value="regular" <?= $recommendedStatus === 'regular' ? 'selected' : '' ?>>Regular</option>
-                                    <option value="irregular" <?= $recommendedStatus === 'irregular' ? 'selected' : '' ?>>Irregular</option>
-                                </select>
+                                <span class="badge <?= $recommendedStatus === 'regular' ? 'success' : 'warning' ?>"><?= h(ucfirst($recommendedStatus)) ?></span>
+                                <input type="hidden" name="requested_status" id="statusSelect" value="<?= h($recommendedStatus) ?>">
                             </div>
                         </div>
                         <div class="item">
@@ -407,23 +471,24 @@ ob_start();
             <div id="regularPanel">
                 <div class="table-wrap">
                     <table>
-                        <thead><tr><th>Code</th><th>Description</th><th>Units</th><th>Schedule</th><th>Prerequisite Check</th></tr></thead>
+                        <thead><tr><th>Code</th><th>Description</th><th>Lec</th><th>Lab</th><th>Units</th><th>Prerequisite Check</th></tr></thead>
                         <tbody id="regularTableBody">
                         <?php foreach ($regularPreview as $row): ?>
                             <?php $eligibility = prerequisite_status_for_curriculum((int) $student['id'], $row); ?>
-                            <tr>
+                            <tr data-lab-credits="<?= h((string) ($row['lab_credit'] ?? 0)) ?>">
                                 <td><?= h($row['subject_code']) ?></td>
                                 <td><?= h($row['subject_description']) ?></td>
-                                <td class="reg-unit"><?= h($row['units']) ?></td>
-                                <td><?= h(trim(($row['day_of_week'] ?: 'TBA') . ' ' . ($row['time_range'] ?: ''))) ?></td>
+                                <td style="text-align:center"><?= h($row['lec_credit'] ?? '0') ?></td>
+                                <td style="text-align:center"><?= h($row['lab_credit'] ?? '0') ?></td>
+                                <td style="text-align:center" class="reg-unit"><?= h($row['units']) ?></td>
                                 <td><span class="badge <?= $eligibility['eligible'] ? 'success' : 'danger' ?>"><?= $eligibility['eligible'] ? 'Eligible' : h($eligibility['reason']) ?></span></td>
                             </tr>
                         <?php endforeach; ?>
                         </tbody>
                         <tfoot>
                             <tr>
-                                <td colspan="2" style="text-align:right;font-weight:700;">Total Units:</td>
-                                <td id="regularTotalUnits" style="font-weight:700;">
+                                <td colspan="4" style="text-align:right;font-weight:700;">Total Units:</td>
+                                <td id="regularTotalUnits" style="text-align:center;font-weight:700;">
                                     <?php
                                     $regTotal = 0;
                                     foreach ($regularPreview as $r) {
@@ -432,7 +497,7 @@ ob_start();
                                     echo h((string) $regTotal);
                                     ?>
                                 </td>
-                                <td colspan="2"></td>
+                                <td></td>
                             </tr>
                         </tfoot>
                     </table>
@@ -446,14 +511,14 @@ ob_start();
                 </div>
                 <div class="table-wrap">
                     <table>
-                        <thead><tr><th>Select</th><th>Section</th><th>Code</th><th>Description</th><th>Units</th><th>Eligibility</th></tr></thead>
+                        <thead><tr><th>Select</th><th>Section</th><th>Code</th><th>Description</th><th>Lec</th><th>Lab</th><th>Units</th><th>Eligibility</th></tr></thead>
                         <tbody>
                         <?php foreach ($irregularSuggestions as $row): ?>
                             <?php $checked = isset($resubmitOfferingIds[(int) $row['id']]) ? 'checked' : ''; ?>
                             <tr>
                                 <td>
                                     <?php if ($row['eligible']): ?>
-                                        <input type="checkbox" name="offering_ids[]" value="<?= h($row['id']) ?>" class="irr-check" data-units="<?= h($row['units']) ?>" <?= $checked ?>>
+                                        <input type="checkbox" name="offering_ids[]" value="<?= h($row['id']) ?>" class="irr-check" data-subject-id="<?= h($row['subject_id']) ?>" data-units="<?= h($row['units']) ?>" data-lab-credits="<?= h((string) ($row['lab_credit'] ?? 0)) ?>" <?= $checked ?>>
                                     <?php else: ?>
                                         <span class="helper">Blocked</span>
                                     <?php endif; ?>
@@ -461,7 +526,9 @@ ob_start();
                                 <td><?= h($row['year_level'] . '-' . $row['section_name']) ?></td>
                                 <td><?= h($row['subject_code']) ?></td>
                                 <td><?= h($row['subject_description']) ?></td>
-                                <td class="irr-unit"><?= h($row['units']) ?></td>
+                                <td style="text-align:center"><?= h($row['lec_credit'] ?? '0') ?></td>
+                                <td style="text-align:center"><?= h($row['lab_credit'] ?? '0') ?></td>
+                                <td style="text-align:center" class="irr-unit"><?= h($row['units']) ?></td>
                                 <td><span class="badge <?= $row['eligible'] ? 'success' : 'danger' ?>"><?= $row['eligible'] ? 'Eligible' : h($row['eligibility_reason']) ?></span></td>
                             </tr>
                         <?php endforeach; ?>
@@ -480,36 +547,96 @@ ob_start();
             <h3>Step 3: Review &amp; Confirm</h3>
             <p class="helper">Review your enrollment details below. You cannot edit once submitted.</p>
 
-            <div class="grid cols-2" style="margin-top:16px;">
-                <div class="card slim">
-                    <h4>Enrollment Summary</h4>
-                    <div class="kv-list">
-                        <div class="item"><div class="k">Term</div><div class="v"><?= h($currentTerm['year_label'] . ' / ' . semester_label((string) $currentTerm['semester'])) ?></div></div>
-                        <div class="item"><div class="k">Section</div><div class="v" id="reviewSection"></div></div>
-                        <div class="item"><div class="k">Status</div><div class="v" id="reviewStatus"></div></div>
-                        <div class="item"><div class="k">Subjects</div><div class="v" id="reviewCount"></div></div>
-                        <div class="item"><div class="k">Total Units</div><div class="v" id="reviewUnits"></div></div>
+            <div style="margin-top:16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 16px;">
+                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px 16px;">
+                    <div>
+                        <div style="font-size:10px;font-weight:600;color:#15803d;text-transform:uppercase;letter-spacing:0.4px;">Student Number</div>
+                        <div style="font-size:13px;font-weight:600;color:#1e293b;"><?= h($student['student_number']) ?></div>
                     </div>
-                </div>
-                <div class="card slim">
-                    <h4>Tuition Fee Breakdown</h4>
-                    <div class="kv-list">
-                        <div class="item"><div class="k">Financial Status</div><div class="v"><?= h($financial['label']) ?></div></div>
-                        <div class="item"><div class="k">Tuition per Unit</div><div class="v">â‚±<?= h(format_money($financial['tuition_per_unit'])) ?></div></div>
-                        <div class="item"><div class="k">Tuition Fee</div><div class="v" id="reviewTuition">â‚±0.00</div></div>
-                        <div class="item"><div class="k">Other School Fees</div><div class="v">â‚±<?= h(format_money($otherFees)) ?></div></div>
-                        <div class="item" style="border-top:2px solid var(--line);padding-top:8px;margin-top:4px;"><div class="k" style="font-weight:700;">Total Amount Due</div><div class="v" id="reviewTotal" style="font-weight:700;font-size:18px;">â‚±0.00</div></div>
+                    <div>
+                        <div style="font-size:10px;font-weight:600;color:#15803d;text-transform:uppercase;letter-spacing:0.4px;">Full Name</div>
+                        <div style="font-size:13px;font-weight:600;color:#1e293b;"><?= h($student['full_name']) ?></div>
+                    </div>
+                    <div>
+                        <div style="font-size:10px;font-weight:600;color:#15803d;text-transform:uppercase;letter-spacing:0.4px;">Program</div>
+                        <div style="font-size:13px;font-weight:600;color:#1e293b;"><?= h($student['program_code']) ?></div>
+                    </div>
+                    <div>
+                        <div style="font-size:10px;font-weight:600;color:#15803d;text-transform:uppercase;letter-spacing:0.4px;">Section</div>
+                        <div style="font-size:13px;font-weight:600;color:#1e293b;" id="reviewSection"></div>
+                    </div>
+                    <div>
+                        <div style="font-size:10px;font-weight:600;color:#15803d;text-transform:uppercase;letter-spacing:0.4px;">Term</div>
+                        <div style="font-size:13px;font-weight:600;color:#1e293b;"><?= h($currentTerm['year_label'] . ' / ' . semester_label((string) $currentTerm['semester'])) ?></div>
+                    </div>
+                    <div>
+                        <div style="font-size:10px;font-weight:600;color:#15803d;text-transform:uppercase;letter-spacing:0.4px;">Year Level</div>
+                        <div style="font-size:13px;font-weight:600;color:#1e293b;"><?= h($student['year_level']) ?></div>
+                    </div>
+                    <div>
+                        <div style="font-size:10px;font-weight:600;color:#15803d;text-transform:uppercase;letter-spacing:0.4px;">Status</div>
+                        <div style="font-size:13px;font-weight:600;color:#1e293b;" id="reviewStatus"></div>
+                    </div>
+                    <div>
+                        <div style="font-size:10px;font-weight:600;color:#15803d;text-transform:uppercase;letter-spacing:0.4px;">Financial Status</div>
+                        <div style="font-size:13px;font-weight:600;color:#1e293b;"><?= h($financial['label']) ?></div>
                     </div>
                 </div>
             </div>
 
-            <div class="card slim" style="margin-top:12px;">
-                <h4>Subjects Enrolled</h4>
+            <div class="card slim" style="margin-top:14px;">
+                <h4>Subjects to be Enrolled</h4>
                 <div class="table-wrap">
                     <table>
-                        <thead><tr><th>Code</th><th>Description</th><th>Units</th><th>Schedule</th></tr></thead>
+                        <thead><tr><th>Code</th><th>Description</th><th>Lec</th><th>Lab</th><th>Units</th></tr></thead>
                         <tbody id="reviewSubjects"></tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="3" style="text-align:right;font-weight:700;">Total Units:</td>
+                                <td id="reviewLabTotal" style="text-align:center;font-weight:700;"><?= h((string) $initialLabCredits) ?></td>
+                                <td id="reviewUnitsTotal" style="text-align:center;font-weight:700;"><?= h((string) $initialTotalUnits) ?></td>
+                            </tr>
+                        </tfoot>
                     </table>
+                </div>
+                <div style="margin-top:8px;font-size:12px;color:#64748b;" id="reviewCount"><?= h($recommendedStatus === 'regular' ? count($regularPreview) : 0) ?> subject(s), <?= h((string) $initialTotalUnits) ?> units</div>
+            </div>
+
+            <div style="margin-top:14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 16px;">
+                <h4 style="font-size:13px;font-weight:700;color:#16a34a;margin:0 0 10px;padding-bottom:4px;border-bottom:2px solid #bbf7d0;">Tuition Fee Breakdown</h4>
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+                    <div style="display:flex;flex-direction:column;gap:4px;background:#fff;border-radius:6px;padding:10px 12px;border:1px solid #bbf7d0;">
+                        <div style="font-size:11px;font-weight:700;color:#15803d;">1. Tuition Fee</div>
+                        <div style="font-size:12px;padding:2px 0;">
+                            <div style="display:flex;justify-content:space-between;"><span>Tuition per Unit</span><span style="font-weight:600;">&#8369;<?= h(format_money($tuitionPerUnit)) ?></span></div>
+                            <div style="display:flex;justify-content:space-between;"><span>Total Units</span><span style="font-weight:600;" id="reviewUnits2"><?= h((string) $initialTotalUnits) ?></span></div>
+                            <div style="display:flex;justify-content:space-between;border-top:1px solid #e2e8f0;margin-top:4px;padding-top:4px;font-weight:700;"><span>Tuition Fee</span><span id="reviewTuition"><?= h(format_money($initialTuition)) ?></span></div>
+                        </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:4px;background:#fff;border-radius:6px;padding:10px 12px;border:1px solid #bbf7d0;">
+                        <div style="font-size:11px;font-weight:700;color:#15803d;">2. <?= h($labFeeName) ?></div>
+                        <div style="font-size:12px;padding:2px 0;">
+                            <div style="display:flex;justify-content:space-between;"><span>Total Lab Credits</span><span style="font-weight:600;" id="reviewLabTotal2"><?= h((string) $initialLabCredits) ?></span></div>
+                            <div style="display:flex;justify-content:space-between;"><span>Rate per Lab Credit</span><span style="font-weight:600;">&#8369;<?= h(format_money($labFeeRate)) ?></span></div>
+                            <div style="display:flex;justify-content:space-between;border-top:1px solid #e2e8f0;margin-top:4px;padding-top:4px;font-weight:700;"><span><?= h($labFeeName) ?> Total</span><span id="reviewLabFee"><?= h(format_money($initialLabFee)) ?></span></div>
+                        </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:4px;background:#fff;border-radius:6px;padding:10px 12px;border:1px solid #bbf7d0;">
+                        <div style="font-size:11px;font-weight:700;color:#15803d;">3. Other Fees</div>
+                        <div style="font-size:12px;padding:2px 0;">
+                            <?php foreach ($feeItems as $cat => $items): ?>
+                                <?php foreach ($items as $fi): ?>
+                                    <?php if ($cat === 'laboratory') continue; ?>
+                            <div style="display:flex;justify-content:space-between;"><span><?= h($fi['fee_name']) ?></span><span style="font-weight:600;">&#8369;<?= h(format_money((float) $fi['amount'])) ?></span></div>
+                                <?php endforeach; ?>
+                            <?php endforeach; ?>
+                            <div style="display:flex;justify-content:space-between;"><span>Other School Fees</span><span style="font-weight:600;">&#8369;<?= h(format_money($otherFees)) ?></span></div>
+                        </div>
+                    </div>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,#16a34a,#22c55e);border-radius:6px;padding:12px 16px;margin-top:8px;">
+                    <span style="font-size:13px;font-weight:700;color:#fff;text-transform:uppercase;">Total Amount Due</span>
+                    <span style="font-size:18px;font-weight:800;color:#fff;" id="reviewTotal"><?= h(format_money($initialTotal)) ?></span>
                 </div>
             </div>
 
@@ -604,43 +731,63 @@ function updateReview() {
     document.getElementById('reviewSection').textContent = sectionText;
     document.getElementById('reviewStatus').textContent = statusText;
 
-    var subjectCount, totalUnits;
+    var subjectCount, totalUnits, totalLabCredits;
     var reviewBody = document.getElementById('reviewSubjects');
     reviewBody.innerHTML = '';
+    totalUnits = 0;
+    totalLabCredits = 0;
 
     if (statSel.value === 'regular') {
         var rows = document.getElementById('regularTableBody').querySelectorAll('tr');
         subjectCount = rows.length;
-        totalUnits = 0;
         rows.forEach(function(r) {
             var cells = r.querySelectorAll('td');
-            var units = parseFloat(cells[2].textContent) || 0;
+            var units = parseFloat(cells[4].textContent) || 0;
+            var lab = parseFloat(cells[3].textContent) || 0;
             totalUnits += units;
-            reviewBody.innerHTML += '<tr><td>' + cells[0].textContent + '</td><td>' + cells[1].textContent + '</td><td>' + units + '</td><td>' + cells[3].textContent + '</td></tr>';
+            totalLabCredits += lab;
+            reviewBody.innerHTML += '<tr><td>' + cells[0].textContent + '</td><td>' + cells[1].textContent + '</td><td style=\"text-align:center\">' + cells[2].textContent + '</td><td style=\"text-align:center\">' + lab + '</td><td style=\"text-align:center\">' + units + '</td></tr>';
         });
     } else {
         var checks = document.querySelectorAll('.irr-check:checked');
         subjectCount = checks.length;
-        totalUnits = 0;
         checks.forEach(function(c) {
             var tr = c.closest('tr');
             var cells = tr.querySelectorAll('td');
             var units = parseFloat(c.getAttribute('data-units')) || 0;
+            var lab = parseFloat(c.getAttribute('data-lab-credits')) || 0;
             totalUnits += units;
-            reviewBody.innerHTML += '<tr><td>' + cells[2].textContent + '</td><td>' + cells[3].textContent + '</td><td>' + units + '</td><td>-</td></tr>';
+            totalLabCredits += lab;
+            reviewBody.innerHTML += '<tr><td>' + cells[2].textContent + '</td><td>' + cells[3].textContent + '</td><td style=\"text-align:center\">' + cells[4].textContent + '</td><td style=\"text-align:center\">' + lab + '</td><td style=\"text-align:center\">' + units + '</td></tr>';
         });
     }
 
-    document.getElementById('reviewCount').textContent = subjectCount + ' subject(s)';
-    document.getElementById('reviewUnits').textContent = totalUnits + ' units';
+    document.getElementById('reviewCount').textContent = subjectCount + ' subject(s), ' + totalUnits + ' units';
+    document.getElementById('reviewUnitsTotal').textContent = totalUnits;
+    document.getElementById('reviewUnits2').textContent = totalUnits;
+    document.getElementById('reviewLabTotal').textContent = totalLabCredits;
+    document.getElementById('reviewLabTotal2').textContent = totalLabCredits;
 
-    var tuitionPerUnit = <?= (float) $financial['tuition_per_unit'] ?>;
+    var tuitionPerUnit = <?= (float) $tuitionPerUnit ?>;
     var otherFees = <?= $otherFees ?>;
+    var labFeeRate = <?= (float) $labFeeRate; ?>;
     var tuition = totalUnits * tuitionPerUnit;
-    var total = tuition + otherFees;
+    var labFee = totalLabCredits * labFeeRate;
+    var feeItemsTotal = 0;
 
-    document.getElementById('reviewTuition').textContent = 'â‚±' + tuition.toFixed(2);
-    document.getElementById('reviewTotal').textContent = 'â‚±' + total.toFixed(2);
+    <?php foreach ($feeItems as $cat => $items): ?>
+        <?php if ($cat === 'laboratory') continue; ?>
+        <?php foreach ($items as $fi): ?>
+            <?php if ($cat === 'assessment' && strcasecmp($fi['fee_name'], 'tuition') === 0) continue; ?>
+            feeItemsTotal += <?= (float) $fi['amount'] ?>;
+        <?php endforeach; ?>
+    <?php endforeach; ?>
+
+    var total = tuition + labFee + feeItemsTotal + otherFees;
+
+    document.getElementById('reviewTuition').textContent = tuition.toFixed(2);
+    document.getElementById('reviewLabFee').textContent = labFee.toFixed(2);
+    document.getElementById('reviewTotal').textContent = total.toFixed(2);
 
     document.getElementById('modal-section').textContent = sectionText;
     document.getElementById('modal-status').textContent = statusText;
@@ -701,13 +848,35 @@ document.addEventListener('DOMContentLoaded', function() {
         if (units > 27) { counter.className = 'badge danger'; }
         else if (units > 20) { counter.className = 'badge warning'; }
         else { counter.className = 'badge info'; }
+
+        // Re-enable all checkboxes first, then disable same-subject duplicates
+        document.querySelectorAll('.irr-check').forEach(function(c) {
+            c.disabled = false;
+        });
+        var checkedSubjects = {};
+        document.querySelectorAll('.irr-check:checked').forEach(function(c) {
+            var sid = c.getAttribute('data-subject-id');
+            if (checkedSubjects[sid]) {
+                // Shouldn't happen with the handler below, but safeguard
+                c.checked = false;
+            } else {
+                checkedSubjects[sid] = true;
+            }
+        });
+        document.querySelectorAll('.irr-check:checked').forEach(function(c) {
+            var sid = c.getAttribute('data-subject-id');
+            document.querySelectorAll('.irr-check[data-subject-id="' + sid + '"]').forEach(function(other) {
+                if (other !== c) {
+                    other.disabled = true;
+                }
+            });
+        });
     }
 
     document.querySelectorAll('.irr-check').forEach(function(c) {
         c.addEventListener('change', updateUnitCounter);
     });
 
-    statusSel.addEventListener('change', toggleStatus);
     toggleStatus();
 
     <?php if ($editingDraft || $resubmitParam): ?>
@@ -734,10 +903,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
 
-        if (draftStatus) {
-            statusSel.value = draftStatus;
-            toggleStatus();
-        }
+        toggleStatus();
 
         if (draftOfferingIds.length > 0) {
             document.querySelectorAll('.irr-check').forEach(function(c) {
@@ -748,9 +914,6 @@ document.addEventListener('DOMContentLoaded', function() {
             updateUnitCounter();
         }
     })();
-    <?php elseif ($resubmitSource && $resubmitSource['requested_status'] === 'irregular'): ?>
-    statusSel.value = 'irregular';
-    toggleStatus();
     <?php endif; ?>
 });
 </script>
@@ -778,23 +941,24 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
         <div class="table-wrap">
             <table>
-                <thead><tr><th>Code</th><th>Description</th><th>Units</th><th>Section</th><th>Schedule</th></tr></thead>
+                <thead><tr><th>Code</th><th>Description</th><th>Lec</th><th>Lab</th><th>Units</th><th>Section</th></tr></thead>
                 <tbody>
                 <?php foreach ($draftItems as $item): ?>
                     <tr>
                         <td><?= h($item['subject_code']) ?></td>
                         <td><?= h($item['subject_description']) ?></td>
-                        <td><?= h($item['units']) ?></td>
+                        <td style="text-align:center"><?= h($item['lec_credit'] ?? '0') ?></td>
+                        <td style="text-align:center"><?= h($item['lab_credit'] ?? '0') ?></td>
+                        <td style="text-align:center"><?= h($item['units']) ?></td>
                         <td><?= h($item['year_level'] . '-' . $item['section_name']) ?></td>
-                        <td><?= h(trim(($item['instructor_name'] ?: 'TBA'))) ?></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
                 <tfoot>
                     <tr>
-                        <td colspan="2" style="text-align:right;font-weight:700;">Total Units:</td>
-                        <td style="font-weight:700;"><?= h($draftRequest['total_units']) ?></td>
-                        <td colspan="2"></td>
+                        <td colspan="4" style="text-align:right;font-weight:700;">Total Units:</td>
+                        <td style="text-align:center;font-weight:700;"><?= h($draftRequest['total_units']) ?></td>
+                        <td></td>
                     </tr>
                 </tfoot>
             </table>
@@ -831,13 +995,15 @@ document.addEventListener('DOMContentLoaded', function() {
             <h4 style="margin-bottom:8px;">Subjects from previous request:</h4>
             <div class="table-wrap">
                 <table>
-                    <thead><tr><th>Code</th><th>Description</th><th>Units</th><th>Section</th><th>Status</th></tr></thead>
+                    <thead><tr><th>Code</th><th>Description</th><th>Lec</th><th>Lab</th><th>Units</th><th>Section</th><th>Status</th></tr></thead>
                     <tbody>
                     <?php foreach ($prevItems as $item): ?>
                         <tr>
                             <td><?= h($item['subject_code']) ?></td>
                             <td><?= h($item['subject_description']) ?></td>
-                            <td><?= h($item['units']) ?></td>
+                            <td style="text-align:center"><?= h($item['lec_credit'] ?? '0') ?></td>
+                            <td style="text-align:center"><?= h($item['lab_credit'] ?? '0') ?></td>
+                            <td style="text-align:center"><?= h($item['units']) ?></td>
                             <td><?= h($item['year_level'] . '-' . $item['section_name']) ?></td>
                             <td><span class="badge danger"><?= h($latestRequest['workflow_status'] === 'rejected' ? 'Rejected' : 'Cancelled') ?></span></td>
                         </tr>
@@ -845,8 +1011,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     </tbody>
                     <tfoot>
                         <tr>
-                            <td colspan="2" style="text-align:right;font-weight:700;">Total Units:</td>
-                            <td style="font-weight:700;"><?= h($latestRequest['total_units']) ?></td>
+                            <td colspan="4" style="text-align:right;font-weight:700;">Total Units:</td>
+                            <td style="text-align:center;font-weight:700;"><?= h($latestRequest['total_units']) ?></td>
                             <td colspan="2"></td>
                         </tr>
                     </tfoot>

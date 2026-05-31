@@ -10,7 +10,7 @@ function ensure_soft_delete_columns(): void
     $needed = [
         'staff'                       => 'AFTER `dept_id`',
         'sections'                    => 'AFTER `max_slots`',
-        'subjects'                    => 'AFTER `units`',
+        'subjects'                    => 'AFTER `subject_description`',
         'users'                       => 'AFTER `password`',
         'program_curriculum'          => '',
         'academic_terms'              => '',
@@ -193,12 +193,13 @@ function ensure_add_drop_table(): void
     try {
         global $pdo;
         if (!($pdo instanceof PDO)) return;
+
         $pdo->exec("
             CREATE TABLE IF NOT EXISTS add_drop_requests (
               id               INT AUTO_INCREMENT PRIMARY KEY,
               student_id       INT NOT NULL,
-              term_id          INT NOT NULL,
-              action_type      ENUM('add','drop') NOT NULL,
+              term_id          INT NOT NULL DEFAULT 0,
+              action_type      ENUM('add','drop') NOT NULL DEFAULT 'add',
               offering_id      INT NULL,
               subject_id       INT NULL,
               section_id       INT NULL,
@@ -225,6 +226,37 @@ function ensure_add_drop_table(): void
               CONSTRAINT fk_adr_subject FOREIGN KEY (subject_id) REFERENCES subjects(subject_id) ON DELETE SET NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
         ");
+
+        $addCols = [
+            'term_id'          => 'INT NOT NULL DEFAULT 0 AFTER student_id',
+            'action_type'      => "ENUM('add','drop') NOT NULL DEFAULT 'add' AFTER term_id",
+            'offering_id'      => 'INT NULL AFTER action_type',
+            'section_id'       => 'INT NULL AFTER subject_id',
+            'curriculum_id'    => 'INT NULL AFTER section_id',
+            'units'            => "DECIMAL(4,1) NOT NULL DEFAULT 0 AFTER curriculum_id",
+            'workflow_status'  => "ENUM('submitted','adviser_approved','chair_approved','registrar_approved','rejected','cancelled') NOT NULL DEFAULT 'submitted' AFTER units",
+            'adviser_status'   => "ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending' AFTER workflow_status",
+            'chair_status'     => "ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending' AFTER adviser_status",
+            'registrar_status' => "ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending' AFTER chair_status",
+            'adviser_remark'   => 'TEXT NULL AFTER registrar_status',
+            'chair_remark'     => 'TEXT NULL AFTER adviser_remark',
+            'registrar_remark' => 'TEXT NULL AFTER chair_remark',
+            'adviser_processed_at'  => 'TIMESTAMP NULL AFTER registrar_remark',
+            'chair_processed_at'    => 'TIMESTAMP NULL AFTER adviser_processed_at',
+            'registrar_processed_at' => 'TIMESTAMP NULL AFTER chair_processed_at',
+            'adviser_processed_by'  => 'INT NULL AFTER registrar_processed_at',
+            'chair_processed_by'    => 'INT NULL AFTER adviser_processed_by',
+            'registrar_processed_by' => 'INT NULL AFTER chair_processed_by',
+            'created_at'       => 'TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER registrar_processed_by',
+            'updated_at'       => 'TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at',
+        ];
+
+        foreach ($addCols as $col => $def) {
+            $stmt = $pdo->query("SHOW COLUMNS FROM `add_drop_requests` LIKE '$col'");
+            if (!$stmt || !$stmt->fetch()) {
+                $pdo->exec("ALTER TABLE `add_drop_requests` ADD COLUMN `$col` $def");
+            }
+        }
     } catch (\Throwable $e) {
     }
 
@@ -369,10 +401,28 @@ function ensure_curriculum_columns(): void
         foreach ($creditCols as $col) {
             $stmt = $pdo->query("SHOW COLUMNS FROM `subjects` LIKE '{$col}'");
             if (!$stmt || !$stmt->fetch()) {
-                $pdo->exec("ALTER TABLE `subjects` ADD COLUMN `{$col}` DECIMAL(4,1) NOT NULL DEFAULT 0 AFTER `units`");
+                $pdo->exec("ALTER TABLE `subjects` ADD COLUMN `{$col}` DECIMAL(4,1) NOT NULL DEFAULT 0 AFTER `subject_description`");
             }
         }
     } catch (\Throwable $e) {
+    }
+}
+
+function ensure_drop_units_column(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    try {
+        global $pdo;
+        if (!($pdo instanceof PDO)) return;
+
+        $stmt = $pdo->query("SHOW COLUMNS FROM `subjects` LIKE 'units'");
+        if ($stmt && $stmt->fetch()) {
+            $pdo->exec("ALTER TABLE `subjects` DROP COLUMN `units`");
+        }
+    } catch (Throwable $e) {
     }
 }
 
@@ -454,6 +504,40 @@ function ensure_student_subjects_columns(): void
         $stmt = $pdo->query("SHOW COLUMNS FROM `student_subjects` LIKE 'remarks'");
         if (!$stmt || !$stmt->fetch()) {
             $pdo->exec("ALTER TABLE `student_subjects` ADD COLUMN `remarks` VARCHAR(255) NULL AFTER `final_grade`");
+        }
+    } catch (\Throwable $e) {
+    }
+}
+
+function ensure_fee_workflow_columns(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    try {
+        global $pdo;
+        if (!($pdo instanceof PDO)) return;
+
+        $stmt = $pdo->query("SHOW COLUMNS FROM `programs` LIKE 'lab_fee_per_unit'");
+        if (!$stmt || !$stmt->fetch()) {
+            $pdo->exec("ALTER TABLE `programs` ADD COLUMN `lab_fee_per_unit` DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER `program_major`");
+        }
+
+        $stmt = $pdo->query("SHOW COLUMNS FROM `enrollment_requests` LIKE 'workflow_status'");
+        $row = $stmt ? $stmt->fetch() : null;
+        if ($row && strpos($row['Type'], 'registrar_forwarded') === false) {
+            $pdo->exec("ALTER TABLE `enrollment_requests` MODIFY COLUMN `workflow_status` ENUM('draft','submitted','adviser_approved','chair_approved','registrar_forwarded','cashier_approved','registrar_approved','rejected','cancelled') NOT NULL DEFAULT 'draft'");
+        }
+
+        $stmt = $pdo->query("SHOW COLUMNS FROM `enrollment_requests` LIKE 'cashier_processed_at'");
+        if (!$stmt || !$stmt->fetch()) {
+            $pdo->exec("ALTER TABLE `enrollment_requests` ADD COLUMN `cashier_processed_at` TIMESTAMP NULL AFTER `registrar_processed_by`");
+        }
+
+        $stmt = $pdo->query("SHOW COLUMNS FROM `enrollment_requests` LIKE 'cashier_processed_by'");
+        if (!$stmt || !$stmt->fetch()) {
+            $pdo->exec("ALTER TABLE `enrollment_requests` ADD COLUMN `cashier_processed_by` INT NULL AFTER `cashier_processed_at`");
         }
     } catch (\Throwable $e) {
     }

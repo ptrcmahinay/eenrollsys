@@ -28,7 +28,7 @@ if (!in_array($paymentMethod, $allowedMethods, true)) {
 
 $enrollment = fetch_one(
     'SELECT er.total_amount, er.payment_status, s.id AS student_id,
-            COALESCE(SUM(p.amount_paid), 0) AS total_paid
+            COALESCE(SUM(p.amount), 0) AS total_paid
      FROM enrollment_requests er
      INNER JOIN students s ON s.id = er.student_id
      LEFT JOIN payments p ON p.request_id = er.id
@@ -52,18 +52,16 @@ $totalDue = (float) $enrollment['total_amount'];
 $newBalance = max(0, $totalDue - $newPaid);
 
 execute_sql(
-    'INSERT INTO payments (request_id, student_id, or_number, amount_paid, balance, payment_method, payment_date, remarks, cashier_id)
-     VALUES (:request_id, :student_id, :or_number, :amount, :balance, :method, :date, :remarks, :cashier_id)',
+    'INSERT INTO payments (request_id, student_id, amount, payment_method, payment_date, reference_number, remarks)
+     VALUES (:request_id, :student_id, :amount, :method, :date, :ref_no, :remarks)',
     [
         'request_id' => $requestId,
         'student_id' => (int) $enrollment['student_id'],
-        'or_number' => $orNumber !== '' ? $orNumber : null,
         'amount' => $amountPaid,
-        'balance' => $newBalance,
         'method' => $paymentMethod,
         'date' => $paymentDate,
+        'ref_no' => $orNumber !== '' ? $orNumber : null,
         'remarks' => $remarks !== '' ? $remarks : null,
-        'cashier_id' => (int) $user['users_id'],
     ]
 );
 

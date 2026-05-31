@@ -67,6 +67,20 @@ function render_registration_form_document(int $studentId, int $termId): void
     $data = registration_form_data($studentId, $termId);
     $student = $data['student'];
     $rows = $data['rows'];
+
+    $labFeePerUnit = lab_fee_per_unit((int) $student['program_id']);
+    $feeItems = fee_items_for_enrollment((int) $student['program_id'], (int) $student['year_level'], (string) $student['semester']);
+    $labFee = $labFeePerUnit * $data['total_lab_credits'];
+
+    $feeCatTotals = ['laboratory' => 0.0, 'other' => 0.0, 'assessment' => 0.0];
+    foreach ($feeItems as $cat => $items) {
+        foreach ($items as $fi) {
+            $feeCatTotals[$cat] += (float) $fi['amount'];
+        }
+    }
+    $totalFeeItemsAmount = array_sum($feeCatTotals);
+    $newTotalAmount = $data['total_amount'] + $labFee + $totalFeeItemsAmount;
+
     ob_start();
     ?>
     <div class="doc-header">
@@ -118,8 +132,12 @@ function render_registration_form_document(int $studentId, int $termId): void
             <table class="doc-table">
                 <tr><th>Total Units</th><td class="text-right"><?= h(format_money($data['total_units'])) ?></td></tr>
                 <tr><th>Tuition</th><td class="text-right">&#8369;<?= h(format_money($data['tuition'])) ?></td></tr>
+                <tr><th>Lab Fee (<?= h((string) $data['total_lab_credits']) ?> crd)</th><td class="text-right">&#8369;<?= h(format_money($labFee)) ?></td></tr>
                 <tr><th>Other Fees</th><td class="text-right">&#8369;<?= h(format_money($data['other_fees'])) ?></td></tr>
-                <tr><th>Total Amount</th><td class="text-right"><strong>&#8369;<?= h(format_money($data['total_amount'])) ?></strong></td></tr>
+                <?php if ($totalFeeItemsAmount > 0): ?>
+                <tr><th>Fee Items</th><td class="text-right">&#8369;<?= h(format_money($totalFeeItemsAmount)) ?></td></tr>
+                <?php endif; ?>
+                <tr><th>Total Amount</th><td class="text-right"><strong>&#8369;<?= h(format_money($newTotalAmount)) ?></strong></td></tr>
             </table>
         </div>
         <div>
@@ -131,6 +149,47 @@ function render_registration_form_document(int $studentId, int $termId): void
             </table>
         </div>
     </div>
+
+    <?php if ($totalFeeItemsAmount > 0): ?>
+    <h3 style="font-size:13px;font-weight:700;color:#16a34a;margin:14px 0 8px;padding-bottom:4px;border-bottom:2px solid #bbf7d0;">Other Fees Breakdown</h3>
+    <table class="doc-table">
+        <thead>
+            <tr>
+                <th>Laboratory Fees</th>
+                <th>Other Fees</th>
+                <th>Assessment Fees</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>
+                    <?php foreach ($feeItems['laboratory'] as $fi): ?>
+                        <div>&#8369;<?= h(format_money((float) $fi['amount'])) ?> — <?= h($fi['fee_name']) ?></div>
+                    <?php endforeach; ?>
+                    <?php if ($feeCatTotals['laboratory'] > 0): ?>
+                        <div style="font-weight:700;color:#16a34a;border-top:1px solid #bbf7d0;margin-top:4px;padding-top:4px;">Total: &#8369;<?= h(format_money($feeCatTotals['laboratory'])) ?></div>
+                    <?php endif; ?>
+                </td>
+                <td>
+                    <?php foreach ($feeItems['other'] as $fi): ?>
+                        <div>&#8369;<?= h(format_money((float) $fi['amount'])) ?> — <?= h($fi['fee_name']) ?></div>
+                    <?php endforeach; ?>
+                    <?php if ($feeCatTotals['other'] > 0): ?>
+                        <div style="font-weight:700;color:#16a34a;border-top:1px solid #bbf7d0;margin-top:4px;padding-top:4px;">Total: &#8369;<?= h(format_money($feeCatTotals['other'])) ?></div>
+                    <?php endif; ?>
+                </td>
+                <td>
+                    <?php foreach ($feeItems['assessment'] as $fi): ?>
+                        <div>&#8369;<?= h(format_money((float) $fi['amount'])) ?> — <?= h($fi['fee_name']) ?></div>
+                    <?php endforeach; ?>
+                    <?php if ($feeCatTotals['assessment'] > 0): ?>
+                        <div style="font-weight:700;color:#16a34a;border-top:1px solid #bbf7d0;margin-top:4px;padding-top:4px;">Total: &#8369;<?= h(format_money($feeCatTotals['assessment'])) ?></div>
+                    <?php endif; ?>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    <?php endif; ?>
 
     $registrarSig = setting('registrar_signature', '');
     $registrarSigHtml = $registrarSig !== ''

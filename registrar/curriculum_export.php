@@ -18,7 +18,7 @@ if ($program === null) {
 
 $curriculum = fetch_all(
     'SELECT pc.subject_id, pc.year_level, pc.semester, pc.curriculum_label, pc.standing,
-            sub.subject_code, sub.subject_description, sub.units,
+            sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units,
             pre1.subject_code AS prereq1, pre2.subject_code AS prereq2, pre3.subject_code AS prereq3
      FROM program_curriculum pc
      INNER JOIN subjects sub ON sub.subject_id = pc.subject_id
@@ -38,7 +38,7 @@ if ($format === 'csv') {
     header('Pragma: no-cache');
 
     $out = fopen('php://output', 'w');
-    fputcsv($out, ['Subject Code', 'Description', 'Units', 'Year Level', 'Semester', 'Prerequisites', 'Standing', 'Curriculum Label']);
+    fputcsv($out, ['Subject Code', 'Description', 'Year Level', 'Semester', 'Prerequisites', 'Standing', 'Curriculum Label']);
     foreach ($curriculum as $line) {
         $prereqs = [];
         if ($line['prereq1']) $prereqs[] = $line['prereq1'];
@@ -47,7 +47,6 @@ if ($format === 'csv') {
         fputcsv($out, [
             $line['subject_code'],
             $line['subject_description'],
-            $line['units'],
             $line['year_level'],
             $line['semester'],
             implode(', ', $prereqs),

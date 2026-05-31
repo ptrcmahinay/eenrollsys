@@ -75,7 +75,7 @@ if (is_post()) {
                     );
 
                     $offering = fetch_one(
-                        'SELECT o.subject_id, o.curriculum_id, sub.units FROM section_subject_offerings o INNER JOIN subjects sub ON sub.subject_id = o.subject_id WHERE o.id = :id',
+                        'SELECT o.subject_id, o.curriculum_id, (sub.lec_credit + sub.lab_credit) AS units FROM section_subject_offerings o INNER JOIN subjects sub ON sub.subject_id = o.subject_id WHERE o.id = :id',
                         ['id' => (int) $offeringId]
                     );
                     if ($offering) {
@@ -123,7 +123,7 @@ if (is_post()) {
 
 if ($lookupStudent) {
     $offerings = fetch_all(
-        'SELECT o.id, o.section_id, sub.subject_code, sub.subject_description, sub.units,
+        'SELECT o.id, o.section_id, sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units,
                 o.day_of_week, o.time_range, o.room, sec.section_name,
                 CONCAT(COALESCE(st.full_name, "TBA")) AS instructor_name
          FROM section_subject_offerings o
@@ -144,7 +144,7 @@ if ($lookupStudent) {
         if (!empty($sections)) {
             $selectedSectionId = (int) $sections[0]['id'];
             $offerings = fetch_all(
-                'SELECT o.id, o.section_id, sub.subject_code, sub.subject_description, sub.units,
+                'SELECT o.id, o.section_id, sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units,
                         o.day_of_week, o.time_range, o.room, sec.section_name,
                         CONCAT(COALESCE(st.full_name, "TBA")) AS instructor_name
                  FROM section_subject_offerings o

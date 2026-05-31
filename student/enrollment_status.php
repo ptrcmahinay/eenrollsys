@@ -128,13 +128,13 @@ ob_start();
 
                 $advState = $request['adviser_status'] === 'approved' ? 'done' : ($advRejected ? 'rejected' : ($ws === 'submitted' ? 'active' : ''));
                 $chState  = $advRejected ? 'blocked' : ($request['chair_status'] === 'approved' ? 'done' : ($chRejected ? 'rejected' : ($ws === 'adviser_approved' ? 'active' : '')));
-                $regState = ($advRejected || $chRejected) ? 'blocked' : ($request['registrar_status'] === 'approved' ? 'done' : ($regRejected ? 'rejected' : ($ws === 'chair_approved' ? 'active' : '')));
+                $cashState = ($advRejected || $chRejected) ? 'blocked' : ($ws === 'cashier_approved' ? 'done' : ($ws === 'registrar_forwarded' ? 'active' : ($ws === 'registrar_approved' ? 'done' : '')));
 
                 $steps = [
                     ['label' => 'Submitted',   'state' => 'done',     'remark' => '',                'time' => $request['created_at']],
                     ['label' => 'Adviser',     'state' => $advState,  'remark' => $request['adviser_remark']   ?: '', 'time' => $request['adviser_processed_at']   ?: ''],
                     ['label' => 'Dept. Chair', 'state' => $chState,   'remark' => $request['chair_remark']     ?: '', 'time' => $request['chair_processed_at']     ?: ''],
-                    ['label' => 'Registrar',   'state' => $regState,  'remark' => $request['registrar_remark'] ?: '', 'time' => $request['registrar_processed_at'] ?: ''],
+                    ['label' => 'Cashier',     'state' => $cashState, 'remark' => '',                        'time' => $request['cashier_processed_at']    ?: ''],
                     ['label' => 'Enrolled',    'state' => $isFinal ? 'done' : ($advRejected || $chRejected || $regRejected ? 'blocked' : ''), 'remark' => '', 'time' => ''],
                 ];
             ?>

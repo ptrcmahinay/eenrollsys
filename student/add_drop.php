@@ -32,7 +32,7 @@ $enrolledSubjects = fetch_all(
 );
 
 $availableOfferings = fetch_all(
-    'SELECT o.id, o.section_id, o.curriculum_id, o.subject_id, sub.subject_code, sub.subject_description, sub.units,
+    'SELECT o.id, o.section_id, o.curriculum_id, o.subject_id, sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units,
             o.day_of_week, o.time_range, o.room, sec.section_name,
             CONCAT(COALESCE(st.full_name, "TBA")) AS instructor_name,
             sec.max_slots,

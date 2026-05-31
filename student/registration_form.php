@@ -43,6 +43,26 @@ $section = fetch_one(
 
 $financial = financial_profile($student, fetch_one('SELECT * FROM academic_terms WHERE id = :tid', ['tid' => (int) $request['term_id']]));
 $otherFees = (float) setting('other_school_fees', '2500');
+$feeItems = fee_items_for_enrollment((int) $student['program_id'], (int) $student['year_level'], (string) $request['semester']);
+
+$tuitionPerUnit = 0;
+$labFeeRate = 0;
+$labFeeName = 'Laboratory Fee';
+if (isset($feeItems['assessment'])) {
+    foreach ($feeItems['assessment'] as $fi) {
+        if (strcasecmp($fi['fee_name'], 'tuition') === 0) {
+            $tuitionPerUnit = (float) $fi['amount'];
+            break;
+        }
+    }
+}
+if (isset($feeItems['laboratory'])) {
+    foreach ($feeItems['laboratory'] as $fi) {
+        $labFeeRate = (float) $fi['amount'];
+        $labFeeName = ucfirst($fi['fee_name']) . ' Fee';
+        break;
+    }
+}
 
 $enrolledAt = $request['registrar_processed_at'] ?? $request['created_at'];
 
@@ -106,44 +126,57 @@ ob_start();
         <thead>
             <tr>
                 <th class="reg-col-num">No.</th>
-                <th class="reg-col-code">Course Code</th>
-                <th class="reg-col-desc">Course Description</th>
+                <th class="reg-col-code">Code</th>
+                <th class="reg-col-desc">Description</th>
+                <th class="reg-col-credit">Lec</th>
+                <th class="reg-col-credit">Lab</th>
                 <th class="reg-col-units">Units</th>
-                <th class="reg-col-time">Time</th>
-                <th class="reg-col-day">Day</th>
-                <th class="reg-col-room">Room</th>
             </tr>
         </thead>
         <tbody>
-            <?php $i = 1; $totalUnits = 0; ?>
+            <?php $i = 1; $totalUnits = 0; $totalLabCredits = 0; ?>
             <?php foreach ($items as $item): ?>
                 <tr>
                     <td class="reg-col-num"><?= $i++ ?></td>
                     <td class="reg-col-code"><?= h($item['subject_code']) ?></td>
                     <td class="reg-col-desc"><?= h($item['subject_description']) ?></td>
+                    <td class="reg-col-credit"><?= h($item['lec_credit'] ?? '0') ?></td>
+                    <td class="reg-col-credit"><?= h($item['lab_credit'] ?? '0') ?></td>
                     <td class="reg-col-units"><?= h($item['units']) ?></td>
-                    <td class="reg-col-time"><?= h($item['time_range'] ?: 'TBA') ?></td>
-                    <td class="reg-col-day"><?= h($item['day_of_week'] ?: 'TBA') ?></td>
-                    <td class="reg-col-room"><?= h($item['room'] ?: 'TBA') ?></td>
                 </tr>
                 <?php $totalUnits += (float) $item['units']; ?>
+                <?php $totalLabCredits += (float) ($item['lab_credit'] ?? 0); ?>
             <?php endforeach; ?>
         </tbody>
         <tfoot>
             <tr>
-                <td colspan="3" class="reg-total-label">Total Units</td>
+                <td colspan="4" class="reg-total-label">Total Units</td>
+                <td class="reg-total-value"><?= h((string) $totalLabCredits) ?></td>
                 <td class="reg-total-value"><?= h((string) $totalUnits) ?></td>
-                <td colspan="3"></td>
             </tr>
         </tfoot>
     </table>
+
+<?php
+$labFee = $labFeeRate * $totalLabCredits;
+$tuitionOnly = $totalUnits * $tuitionPerUnit;
+$feeItemsTotal = 0;
+foreach ($feeItems as $cat => $items) {
+    if ($cat === 'laboratory') continue;
+    foreach ($items as $fi) {
+        if ($cat === 'assessment' && strcasecmp($fi['fee_name'], 'tuition') === 0) continue;
+        $feeItemsTotal += (float) $fi['amount'];
+    }
+}
+$totalDue = $tuitionOnly + $labFee + $otherFees + $feeItemsTotal;
+?>
 
     <div class="reg-fees">
         <h3 class="reg-section-title">Tuition Fee Breakdown</h3>
         <div class="reg-fees-grid">
             <div class="reg-fee-item">
                 <span class="reg-fee-label">Tuition per Unit</span>
-                <span class="reg-fee-value">&#8369;<?= h(format_money($financial['tuition_per_unit'])) ?></span>
+                <span class="reg-fee-value">&#8369;<?= h(format_money($tuitionPerUnit)) ?></span>
             </div>
             <div class="reg-fee-item">
                 <span class="reg-fee-label">Total Units</span>
@@ -151,15 +184,73 @@ ob_start();
             </div>
             <div class="reg-fee-item">
                 <span class="reg-fee-label">Tuition Fee</span>
-                <span class="reg-fee-value">&#8369;<?= h(format_money($request['total_amount'])) ?></span>
+                <span class="reg-fee-value">&#8369;<?= h(format_money($tuitionOnly)) ?></span>
+            </div>
+            <div class="reg-fee-item">
+                <span class="reg-fee-label"><?= h($labFeeName) ?> (<?= h((string) $totalLabCredits) ?> crd × &#8369;<?= h((string) $labFeeRate) ?>)</span>
+                <span class="reg-fee-value">&#8369;<?= h(format_money($labFee)) ?></span>
             </div>
             <div class="reg-fee-item">
                 <span class="reg-fee-label">Other School Fees</span>
                 <span class="reg-fee-value">&#8369;<?= h(format_money($otherFees)) ?></span>
             </div>
-            <div class="reg-fee-item reg-fee-total">
+        </div>
+    </div>
+
+    <?php if ($feeItemsTotal > 0): ?>
+    <div class="reg-fees">
+        <h3 class="reg-section-title">Other Fees Breakdown</h3>
+        <table class="reg-fi-table">
+            <thead>
+                <tr>
+                    <th>Laboratory Fees</th>
+                    <th>Other Fees</th>
+                    <th>Assessment Fees</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>
+                        <?php $labTotal = 0; ?>
+                        <?php foreach ($feeItems['laboratory'] as $fi): ?>
+                            <?php $labTotal += (float) $fi['amount']; ?>
+                            <div>&#8369;<?= h(format_money((float) $fi['amount'])) ?> — <?= h($fi['fee_name']) ?></div>
+                        <?php endforeach; ?>
+                        <?php if ($labTotal > 0): ?>
+                            <div class="reg-fi-total">Total: &#8369;<?= h(format_money($labTotal)) ?></div>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <?php $otherTotal = 0; ?>
+                        <?php foreach ($feeItems['other'] as $fi): ?>
+                            <?php $otherTotal += (float) $fi['amount']; ?>
+                            <div>&#8369;<?= h(format_money((float) $fi['amount'])) ?> — <?= h($fi['fee_name']) ?></div>
+                        <?php endforeach; ?>
+                        <?php if ($otherTotal > 0): ?>
+                            <div class="reg-fi-total">Total: &#8369;<?= h(format_money($otherTotal)) ?></div>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <?php $assessTotal = 0; ?>
+                        <?php foreach ($feeItems['assessment'] as $fi): ?>
+                            <?php $assessTotal += (float) $fi['amount']; ?>
+                            <div>&#8369;<?= h(format_money((float) $fi['amount'])) ?> — <?= h($fi['fee_name']) ?></div>
+                        <?php endforeach; ?>
+                        <?php if ($assessTotal > 0): ?>
+                            <div class="reg-fi-total">Total: &#8369;<?= h(format_money($assessTotal)) ?></div>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <?php endif; ?>
+
+    <div class="reg-fees">
+        <div class="reg-fees-grid">
+            <div class="reg-fee-item reg-fee-total" style="grid-column: 1 / -1;">
                 <span class="reg-fee-label">Total Amount Due</span>
-                <span class="reg-fee-value">&#8369;<?= h(format_money((float) $request['total_amount'] + $otherFees)) ?></span>
+                <span class="reg-fee-value">&#8369;<?= h(format_money($totalDue)) ?></span>
             </div>
         </div>
     </div>
@@ -320,22 +411,22 @@ ob_start();
     width: 100%;
     border-collapse: collapse;
     margin-bottom: 14px;
-    font-size: 10px;
+    font-size: 8px;
 }
 
 .reg-table th {
     background: linear-gradient(135deg, #16a34a, #22c55e);
     color: #fff;
-    padding: 6px 8px;
+    padding: 4px 5px;
     text-align: left;
     font-weight: 600;
-    font-size: 9px;
+    font-size: 7px;
     text-transform: uppercase;
-    letter-spacing: 0.3px;
+    letter-spacing: 0.2px;
 }
 
 .reg-table td {
-    padding: 5px 8px;
+    padding: 3px 5px;
     border-bottom: 1px solid #e2e8f0;
 }
 
@@ -343,13 +434,11 @@ ob_start();
     background: #f0fdf4;
 }
 
-.reg-col-num { width: 28px; text-align: center; }
-.reg-col-code { width: 72px; font-weight: 600; }
+.reg-col-num { width: 20px; text-align: center; }
+.reg-col-code { width: 60px; font-weight: 600; }
 .reg-col-desc { }
-.reg-col-units { width: 36px; text-align: center; }
-.reg-col-time { width: 82px; }
-.reg-col-day { width: 88px; }
-.reg-col-room { width: 58px; }
+.reg-col-credit { width: 28px; text-align: center; }
+.reg-col-units { width: 30px; text-align: center; }
 
 .reg-table tfoot {
     background: #f0fdf4;
@@ -357,15 +446,15 @@ ob_start();
 }
 
 .reg-total-label {
-    padding: 6px 8px;
+    padding: 4px 5px;
     text-align: right;
-    font-size: 10px;
+    font-size: 8px;
 }
 
 .reg-total-value {
-    padding: 6px 8px;
+    padding: 4px 5px;
     text-align: center;
-    font-size: 10px;
+    font-size: 8px;
 }
 
 .reg-fees {
@@ -417,6 +506,44 @@ ob_start();
 .reg-fee-total .reg-fee-label,
 .reg-fee-total .reg-fee-value {
     color: #fff;
+}
+
+.reg-fi-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 6px;
+    font-size: 10px;
+}
+
+.reg-fi-table th {
+    background: #16a34a;
+    color: #fff;
+    padding: 5px 8px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.reg-fi-table td {
+    padding: 5px 8px;
+    border: 1px solid #bbf7d0;
+    vertical-align: top;
+    background: #fff;
+}
+
+.reg-fi-table td div {
+    padding: 1px 0;
+    font-size: 10px;
+}
+
+.reg-fi-total {
+    font-weight: 700;
+    color: #16a34a;
+    border-top: 1px solid #bbf7d0;
+    margin-top: 4px;
+    padding-top: 4px;
 }
 
 .reg-footer {
@@ -510,6 +637,15 @@ ob_start();
         background: linear-gradient(135deg, #16a34a, #22c55e) !important;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
+    }
+    .reg-fi-table th {
+        background: #16a34a !important;
+        color: #fff !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    .reg-fi-table td {
+        border-color: #bbf7d0 !important;
     }
     .reg-logo {
         background: linear-gradient(135deg, #16a34a, #22c55e) !important;

@@ -29,16 +29,14 @@ if ($enrollment === null) {
 }
 
 $payments = fetch_all(
-    'SELECT p.*, COALESCE(st.full_name, u.username, u.email) AS cashier_name
+    'SELECT p.*
      FROM payments p
-     LEFT JOIN users u ON u.users_id = p.cashier_id
-     LEFT JOIN staff st ON st.users_id = u.users_id
      WHERE p.request_id = :id
      ORDER BY p.payment_date ASC, p.id ASC',
     ['id' => $requestId]
 );
 
-$totalPaid = array_sum(array_map(fn($p) => (float) $p['amount_paid'], $payments));
+$totalPaid = array_sum(array_map(fn($p) => (float) $p['amount'], $payments));
 $balance = max(0, (float) $enrollment['total_amount'] - $totalPaid);
 
 ob_start();
@@ -101,10 +99,10 @@ ob_start();
                 <?php foreach ($payments as $pay): ?>
                     <tr>
                         <td><?= h(date('M d, Y', strtotime($pay['payment_date']))) ?></td>
-                        <td><?= h($pay['or_number'] ?? '—') ?></td>
+                        <td><?= h($pay['reference_number'] ?? '—') ?></td>
                         <td><?= h(ucfirst(str_replace('_', ' ', $pay['payment_method']))) ?></td>
-                        <td style="text-align:right;font-weight:600;">₱<?= h(format_money($pay['amount_paid'])) ?></td>
-                        <td style="text-align:right;">₱<?= h(format_money($pay['balance'])) ?></td>
+                        <td style="text-align:right;font-weight:600;">₱<?= h(format_money($pay['amount'])) ?></td>
+                        <td style="text-align:right;">—</td>
                         <td><?= h($pay['cashier_name'] ?? '—') ?></td>
                     </tr>
                 <?php endforeach; ?>

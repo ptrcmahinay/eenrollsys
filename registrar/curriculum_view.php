@@ -12,7 +12,7 @@ $filters = [
 
 $programs = fetch_all('SELECT programs_id, program_code FROM programs ORDER BY program_code');
 $sql = 'SELECT pc.curriculum_id, pc.curriculum_label, pc.year_level, pc.semester,
-               p.program_code, sub.subject_code, sub.subject_description, sub.units,
+               p.program_code, sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units,
                pre.subject_code AS prerequisite_code
         FROM program_curriculum pc
         INNER JOIN programs p ON p.programs_id = pc.program_id
@@ -85,7 +85,7 @@ ob_start();
 <div class="card" style="margin-top:16px;">
     <div class="table-wrap">
         <table>
-            <thead><tr><th>Program</th><th>Curriculum</th><th>Year</th><th>Semester</th><th>Code</th><th>Description</th><th>Units</th><th>Prerequisite</th></tr></thead>
+            <thead><tr><th>Program</th><th>Curriculum</th><th>Year</th><th>Semester</th><th>Code</th><th>Description</th><th>Prerequisite</th></tr></thead>
             <tbody>
             <?php foreach ($rows as $row): ?>
                 <tr>
@@ -95,7 +95,6 @@ ob_start();
                     <td><?= h($row['semester']) ?></td>
                     <td><?= h($row['subject_code']) ?></td>
                     <td><?= h($row['subject_description']) ?></td>
-                    <td><?= h($row['units']) ?></td>
                     <td><?= h($row['prerequisite_code'] ?: '-') ?></td>
                 </tr>
             <?php endforeach; ?>

@@ -88,7 +88,7 @@ if ($requestType === 'enrollment') {
     };
 
     $requests = fetch_all(
-        'SELECT adr.*, sub.subject_code, sub.subject_description, sub.units AS subject_units,
+        'SELECT adr.*, sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS subject_units,
                 s.student_number, s.full_name, s.id AS student_id,
                 p.program_code, sec.section_name,
                 ay.year_label, t.semester
@@ -177,6 +177,58 @@ ob_start();
                     </p>
                 </div>
                 <div><span class="badge <?= h(workflow_badge_class((string) $request['workflow_status'])) ?>"><?= h(request_workflow_label((string) $request['workflow_status'])) ?></span></div>
+            </div>
+
+            <?php
+            $ws = $request['workflow_status'];
+            $isFinal = $ws === 'registrar_approved';
+            $advRejected = ($request['adviser_status'] ?? '') === 'rejected';
+            $chRejected = ($request['chair_status'] ?? '') === 'rejected';
+            $regRejected = ($request['registrar_status'] ?? '') === 'rejected';
+            $advState = ($request['adviser_status'] ?? '') === 'approved' ? 'done' : ($advRejected ? 'rejected' : ($ws === 'submitted' ? 'active' : ''));
+            $chState = $advRejected ? 'blocked' : (($request['chair_status'] ?? '') === 'approved' ? 'done' : ($chRejected ? 'rejected' : ($ws === 'adviser_approved' ? 'active' : '')));
+            if ($requestType === 'enrollment') {
+                $cashState = ($advRejected || $chRejected) ? 'blocked' : ($ws === 'cashier_approved' ? 'done' : ($ws === 'registrar_forwarded' ? 'active' : ($ws === 'registrar_approved' ? 'done' : '')));
+                $steps = [
+                    ['label' => 'Submitted',   'state' => 'done',     'remark' => ''],
+                    ['label' => 'Adviser',     'state' => $advState,  'remark' => $request['adviser_remark']   ?: ''],
+                    ['label' => 'Dept. Chair', 'state' => $chState,   'remark' => $request['chair_remark']     ?: ''],
+                    ['label' => 'Cashier',     'state' => $cashState, 'remark' => ''],
+                    ['label' => 'Enrolled',    'state' => $isFinal ? 'done' : ($advRejected || $chRejected || $regRejected ? 'blocked' : ''), 'remark' => ''],
+                ];
+            } else {
+                $regState = ($advRejected || $chRejected) ? 'blocked' : (($request['registrar_status'] ?? '') === 'approved' ? 'done' : ($regRejected ? 'rejected' : ($ws === 'chair_approved' ? 'active' : '')));
+                $steps = [
+                    ['label' => 'Submitted', 'state' => 'done', 'remark' => ''],
+                    ['label' => 'Adviser',   'state' => $advState, 'remark' => $request['adviser_remark'] ?: ''],
+                    ['label' => 'Chair',     'state' => $chState,  'remark' => $request['chair_remark'] ?: ''],
+                    ['label' => 'Registrar', 'state' => $regState, 'remark' => $request['registrar_remark'] ?: ''],
+                    ['label' => 'Finalized', 'state' => $isFinal ? 'done' : ($advRejected || $chRejected || $regRejected ? 'blocked' : ''), 'remark' => ''],
+                ];
+            }
+            ?>
+            <div class="stepper" style="margin-top:12px;">
+                <?php foreach ($steps as $step): ?>
+                    <div class="step <?= h($step['state']) ?>">
+                        <div class="step-circle">
+                            <?php if ($step['state'] === 'done'): ?>
+                                <span class="material-symbols-outlined" style="font-size:18px;">check</span>
+                            <?php elseif ($step['state'] === 'rejected'): ?>
+                                <span class="material-symbols-outlined" style="font-size:18px;">close</span>
+                            <?php elseif ($step['state'] === 'blocked'): ?>
+                                <span class="material-symbols-outlined" style="font-size:18px;">stop</span>
+                            <?php elseif ($step['state'] === 'active'): ?>
+                                <span class="material-symbols-outlined" style="font-size:18px;">pending</span>
+                            <?php else: ?>
+                                <span class="material-symbols-outlined" style="font-size:18px;">radio_button_unchecked</span>
+                            <?php endif; ?>
+                        </div>
+                        <div class="step-label"><?= h($step['label']) ?></div>
+                        <?php if ($step['remark'] !== ''): ?>
+                            <div class="step-remark">"<?= h($step['remark']) ?>"</div>
+                        <?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
             </div>
 
             <?php if ($requestType === 'enrollment'): ?>

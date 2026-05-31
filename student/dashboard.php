@@ -89,7 +89,7 @@ foreach ($termAgg as $row) {
 
 // Required units from program curriculum
 $requiredUnits = (float) (fetch_one(
-    'SELECT COALESCE(SUM(sub.units),0) AS total
+    'SELECT COALESCE(SUM(sub.lec_credit + sub.lab_credit),0) AS total
      FROM program_curriculum pc
      INNER JOIN subjects sub ON sub.subject_id = pc.subject_id
      WHERE pc.program_id = :pid',

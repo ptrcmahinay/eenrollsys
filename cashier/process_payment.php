@@ -14,7 +14,7 @@ $enrollment = fetch_one(
     'SELECT er.id, er.total_amount, er.payment_status, er.ra10931_status,
             s.student_number, s.full_name, s.year_level, p.program_code,
             ay.year_label, t.semester,
-            COALESCE(SUM(pay.amount_paid), 0) AS total_paid
+            COALESCE(SUM(pay.amount), 0) AS total_paid
      FROM enrollment_requests er
      INNER JOIN students s ON s.id = er.student_id
      INNER JOIN programs p ON p.programs_id = s.program_id
