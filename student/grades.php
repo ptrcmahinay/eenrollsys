@@ -14,7 +14,7 @@ if ($student === null) {
 $terms = student_terms_with_enrollment((int) $student['id']);
 $selectedTermId = (int) ($_GET['term_id'] ?? 0);
 $rows = fetch_all(
-    'SELECT ss.final_grade, ss.units,
+    'SELECT ss.final_grade, ss.units, ss.enrollment_status,
             sub.subject_code, sub.subject_description,
             ay.year_label, ay.start_year, t.id AS term_id, t.semester
      FROM student_subjects ss
@@ -45,9 +45,10 @@ foreach ($rows as $r) {
 }
 
 function compute_gwa(array $items): array {
-    $totalUnits = 0.0; $weighted = 0.0; $earned = 0.0;
+    $totalUnits = 0.0; $weighted = 0.0; $earned = 0.0; $allUnits = 0.0;
     foreach ($items as $it) {
         $units = (float) $it['units'];
+        $allUnits += $units;
         $grade = $it['final_grade'];
         if ($grade !== null && $grade !== '' && is_numeric($grade)) {
             $weighted   += ((float) $grade) * $units;
@@ -58,9 +59,10 @@ function compute_gwa(array $items): array {
         }
     }
     return [
-        'gwa'         => $totalUnits > 0 ? round($weighted / $totalUnits, 2) : null,
-        'units_taken' => $totalUnits,
-        'units_earned'=> $earned,
+        'gwa'          => $totalUnits > 0 ? round($weighted / $totalUnits, 2) : null,
+        'units_total'  => $allUnits,
+        'units_taken'  => $totalUnits,
+        'units_earned' => $earned,
     ];
 }
 
@@ -122,8 +124,8 @@ ob_start();
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:10px;">
             <h3 style="margin:0;"><?= h($group['year_label'] . ' — ' . semester_label((string) $group['semester'])) ?></h3>
             <div class="actions-row">
-                <span class="badge info">Units Taken: <strong><?= h((string) $stats['units_taken']) ?></strong></span>
-                <span class="badge success">Units Earned: <strong><?= h((string) $stats['units_earned']) ?></strong></span>
+                <span class="badge info">Units: <strong><?= h((string) $stats['units_total']) ?></strong></span>
+                <span class="badge success">Earned: <strong><?= h((string) $stats['units_earned']) ?></strong></span>
                 <span class="badge <?= $stats['gwa'] !== null && $stats['gwa'] <= 3.0 ? 'success' : 'danger' ?>">
                     Term GWA: <strong><?= $stats['gwa'] !== null ? h(number_format($stats['gwa'], 2)) : '—' ?></strong>
                 </span>
@@ -149,8 +151,8 @@ ob_start();
                         <td><?= h($row['units']) ?></td>
                         <td><?= h($row['final_grade'] ?: '-') ?></td>
                         <td>
-                            <span class="badge <?= grade_is_passing($row['final_grade']) ? 'success' : ($row['final_grade'] ? 'danger' : 'info') ?>">
-                                <?= grade_is_passing($row['final_grade']) ? 'Passed' : ($row['final_grade'] ? 'Needs review' : 'Pending') ?>
+                            <span class="badge <?= grade_is_passing($row['final_grade']) ? 'success' : (($row['enrollment_status'] ?? '') === 'enrolled' && !$row['final_grade'] ? 'info' : '') ?>">
+                                <?= grade_is_passing($row['final_grade']) ? 'Passed' : (($row['enrollment_status'] ?? '') === 'enrolled' && !$row['final_grade'] ? 'Enrolled' : '--') ?>
                             </span>
                         </td>
                     </tr>
@@ -158,8 +160,8 @@ ob_start();
                 </tbody>
                 <tfoot>
                     <tr>
-                        <th colspan="2" style="text-align:right;">Term Totals</th>
-                        <th><?= h((string) $stats['units_taken']) ?></th>
+                        <th colspan="2" style="text-align:right;"></th>
+                        <th><?= h((string) $stats['units_total']) ?> Units</th>
                         <th colspan="2">GWA: <?= $stats['gwa'] !== null ? h(number_format($stats['gwa'], 2)) : '—' ?></th>
                     </tr>
                 </tfoot>

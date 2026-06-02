@@ -32,7 +32,7 @@ if ($request === null) {
 $items = enrollment_request_items((int) $request['id']);
 
 $program = fetch_one(
-    'SELECT program_code, program_name FROM programs WHERE programs_id = :id',
+    'SELECT program_code, program_name, program_major FROM programs WHERE programs_id = :id',
     ['id' => (int) $student['program_id']]
 );
 
@@ -68,94 +68,99 @@ $enrolledAt = $request['registrar_processed_at'] ?? $request['created_at'];
 
 ob_start();
 ?>
-<div class="reg-form-container">
-    <div class="reg-header">
-        <div class="reg-logo">
+<div class="form-wrapper" id="formContent">
+    <div class="header">
+        <div class="header-logo">
             <span class="material-symbols-outlined">school</span>
         </div>
-        <div class="reg-title">
-            <p class="reg-rep">Republic of the Philippines</p>
+        <div class="header-text">
+            <p class="rep-text">Republic of the Philippines</p>
             <h1><?= h(setting('campus_name', 'Cavite State University Naic')) ?></h1>
-            <h2>Registration Form</h2>
-            <p class="reg-subtitle"><?= h(setting('campus_address', 'Bucana, Naic, Cavite')) ?> · Official Student Enrollment Record</p>
+            <p class="campus-sub"><?= h(setting('campus_address', 'Bucana, Naic, Cavite')) ?></p>
+            <p class="form-title"><strong>REGISTRATION FORM</strong></p>
         </div>
     </div>
 
-    <div class="reg-stamp">
+    <div class="stamp">
         <span>ENROLLED</span>
     </div>
 
-    <div class="reg-info-grid">
-        <div class="reg-info-item">
-            <span class="reg-label">Student Number</span>
-            <span class="reg-value"><?= h($student['student_number']) ?></span>
+    <div class="top-section">
+        <div class="left-column">
+            <div class="form-row">
+                <span class="label">Student Number:</span>
+                <div class="value"><?= h($student['student_number']) ?></div>
+            </div>
+            <div class="form-row">
+                <span class="label">Student Name:</span>
+                <div class="value"><?= h($student['full_name']) ?></div>
+            </div>
+            <div class="form-row">
+                <span class="label">Course:</span>
+                <div class="value"><?= h($program['program_code']) ?></div>
+            </div>
+            <div class="form-row">
+                <span class="label">Address:</span>
+                <div class="value"><?= h($student['address'] ?? '') ?></div>
+            </div>
         </div>
-        <div class="reg-info-item">
-            <span class="reg-label">Full Name</span>
-            <span class="reg-value"><?= h($student['full_name']) ?></span>
-        </div>
-        <div class="reg-info-item">
-            <span class="reg-label">Program</span>
-            <span class="reg-value"><?= h($program['program_code'] . ' - ' . $program['program_name']) ?></span>
-        </div>
-        <div class="reg-info-item">
-            <span class="reg-label">Section</span>
-            <span class="reg-value"><?= h($section['year_level'] . '-' . $section['section_name']) ?></span>
-        </div>
-        <div class="reg-info-item">
-            <span class="reg-label">Semester</span>
-            <span class="reg-value"><?= h(semester_label((string) $request['semester'])) ?></span>
-        </div>
-        <div class="reg-info-item">
-            <span class="reg-label">School Year</span>
-            <span class="reg-value"><?= h('A.Y. ' . $request['year_label']) ?></span>
-        </div>
-        <div class="reg-info-item">
-            <span class="reg-label">Date &amp; Time Enrolled</span>
-            <span class="reg-value"><?= h(date('F j, Y g:i A', strtotime($enrolledAt))) ?></span>
-        </div>
-        <div class="reg-info-item">
-            <span class="reg-label">Status</span>
-            <span class="reg-value">Regular</span>
+
+        <div class="right-column">
+            <div class="form-row">
+                <span class="label">Semester:</span>
+                <div class="value"><?= h(str_replace(' Semester', '', semester_label((string) $request['semester']))) ?></div>
+                <span class="label" style="min-width: 80px; margin-left: 20px;">Schoolyear:</span>
+                <div class="value" style="flex: 0.8;"><?= h($request['year_label']) ?></div>
+            </div>
+            <div class="form-row">
+                <span class="label">Date:</span>
+                <div class="value"><?= h(date('F j, Y g:i A', strtotime($enrolledAt))) ?></div>
+                <span class="label" style="min-width: 40px; margin-left: 20px;"></span>
+            </div>
+            <div class="form-row">
+                <span class="label">Encoder:</span>
+                <div class="value"></div>
+                <span class="label" style="min-width: 40px; margin-left: 20px;">Major:</span>
+                <div class="value" style="flex: 0.8;"><?= h(!empty($program['program_major']) ? $program['program_major'] : 'N/A') ?></div>
+            </div>
+            <div class="form-row">
+                <span class="label">Section:</span>
+                <div class="value"><?= h($section['year_level'] . '-' . $section['section_name']) ?></div>
+            </div>
         </div>
     </div>
 
-    <h3 class="reg-section-title">Subjects Enrolled</h3>
-
-    <table class="reg-table">
-        <thead>
-            <tr>
-                <th class="reg-col-num">No.</th>
-                <th class="reg-col-code">Code</th>
-                <th class="reg-col-desc">Description</th>
-                <th class="reg-col-credit">Lec</th>
-                <th class="reg-col-credit">Lab</th>
-                <th class="reg-col-units">Units</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php $i = 1; $totalUnits = 0; $totalLabCredits = 0; ?>
-            <?php foreach ($items as $item): ?>
+    <div class="course-section">
+        <table>
+            <thead>
                 <tr>
-                    <td class="reg-col-num"><?= $i++ ?></td>
-                    <td class="reg-col-code"><?= h($item['subject_code']) ?></td>
-                    <td class="reg-col-desc"><?= h($item['subject_description']) ?></td>
-                    <td class="reg-col-credit"><?= h($item['lec_credit'] ?? '0') ?></td>
-                    <td class="reg-col-credit"><?= h($item['lab_credit'] ?? '0') ?></td>
-                    <td class="reg-col-units"><?= h($item['units']) ?></td>
+                    <th style="width: 10%">Sched Code</th>
+                    <th style="width: 14%">Course Code</th>
+                    <th style="width: 35%">Course Description</th>
+                    <th style="width: 8%">Units</th>
+                    <th style="width: 12%">Time</th>
+                    <th style="width: 8%">Day</th>
+                    <th style="width: 12%">Room</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php $i = 1; $totalUnits = 0; $totalLabCredits = 0; ?>
+                <?php foreach ($items as $item): ?>
+                <tr>
+                    <td></td>
+                    <td><?= h($item['subject_code']) ?></td>
+                    <td><?= h($item['subject_description']) ?></td>
+                    <td style="text-align:center"><?= h($item['units']) ?></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
                 </tr>
                 <?php $totalUnits += (float) $item['units']; ?>
                 <?php $totalLabCredits += (float) ($item['lab_credit'] ?? 0); ?>
-            <?php endforeach; ?>
-        </tbody>
-        <tfoot>
-            <tr>
-                <td colspan="4" class="reg-total-label">Total Units</td>
-                <td class="reg-total-value"><?= h((string) $totalLabCredits) ?></td>
-                <td class="reg-total-value"><?= h((string) $totalUnits) ?></td>
-            </tr>
-        </tfoot>
-    </table>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
 
 <?php
 $labFee = $labFeeRate * $totalLabCredits;
@@ -171,138 +176,152 @@ foreach ($feeItems as $cat => $items) {
 $totalDue = $tuitionOnly + $labFee + $otherFees + $feeItemsTotal;
 ?>
 
-    <div class="reg-fees">
-        <h3 class="reg-section-title">Tuition Fee Breakdown</h3>
-        <div class="reg-fees-grid">
-            <div class="reg-fee-item">
-                <span class="reg-fee-label">Tuition per Unit</span>
-                <span class="reg-fee-value">&#8369;<?= h(format_money($tuitionPerUnit)) ?></span>
+    <div class="fee-section">
+        <div class="fee-column">
+            <div class="fee-column-header">Laboratory Fees</div>
+            <div class="fee-item">
+                <span class="fee-label"><?= h($labFeeName) ?> (<?= h((string) $totalLabCredits) ?> crd)</span>
+                <span class="fee-amount">&#8369;<?= h(format_money($labFee)) ?></span>
             </div>
-            <div class="reg-fee-item">
-                <span class="reg-fee-label">Total Units</span>
-                <span class="reg-fee-value"><?= h((string) $totalUnits) ?></span>
+        </div>
+
+        <div class="fee-column">
+            <div class="fee-column-header">Other Fees</div>
+            <div class="fee-item">
+                <span class="fee-label">Other School Fees</span>
+                <span class="fee-amount">&#8369;<?= h(format_money($otherFees)) ?></span>
             </div>
-            <div class="reg-fee-item">
-                <span class="reg-fee-label">Tuition Fee</span>
-                <span class="reg-fee-value">&#8369;<?= h(format_money($tuitionOnly)) ?></span>
+            <?php if (isset($feeItems['other'])): ?>
+                <?php foreach ($feeItems['other'] as $fi): ?>
+                <div class="fee-item">
+                    <span class="fee-label"><?= h($fi['fee_name']) ?></span>
+                    <span class="fee-amount">&#8369;<?= h(format_money((float) $fi['amount'])) ?></span>
+                </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+
+        <div class="fee-column">
+            <div class="fee-column-header">Assessment</div>
+            <div class="fee-item">
+                <span>Tuition (<?= h((string) $totalUnits) ?> units × &#8369;<?= h(format_money($tuitionPerUnit)) ?>)</span>
+                <span class="fee-amount">&#8369;<?= h(format_money($tuitionOnly)) ?></span>
             </div>
-            <div class="reg-fee-item">
-                <span class="reg-fee-label"><?= h($labFeeName) ?> (<?= h((string) $totalLabCredits) ?> crd × &#8369;<?= h((string) $labFeeRate) ?>)</span>
-                <span class="reg-fee-value">&#8369;<?= h(format_money($labFee)) ?></span>
+            <?php if (isset($feeItems['assessment'])): ?>
+                <?php foreach ($feeItems['assessment'] as $fi): ?>
+                    <?php if (strcasecmp($fi['fee_name'], 'tuition') === 0) continue; ?>
+                <div class="fee-item">
+                    <span><?= h($fi['fee_name']) ?></span>
+                    <span class="fee-amount">&#8369;<?= h(format_money((float) $fi['amount'])) ?></span>
+                </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+
+        <div class="fee-column">
+            <div class="fee-column-header">Summary</div>
+            <div class="fee-item">
+                <span>Total UNITS:</span>
+                <span class="fee-amount"><?= h((string) $totalUnits) ?></span>
             </div>
-            <div class="reg-fee-item">
-                <span class="reg-fee-label">Other School Fees</span>
-                <span class="reg-fee-value">&#8369;<?= h(format_money($otherFees)) ?></span>
+            <div class="fee-item">
+                <span>Total HOURS:</span>
+                <span class="fee-amount"><?= h((string) $totalLabCredits) ?></span>
             </div>
+            <div class="fee-item" style="border-top: 1px solid #16a34a; padding-top: 5px;">
+                <span style="font-weight: bold;">Total AMOUNT:</span>
+                <span class="fee-amount" style="color: #16a34a;">&#8369;<?= h(format_money($totalDue)) ?></span>
+            </div>
+            <div class="fee-item">
+                <span>Scholarship</span>
+            </div>
+            <div class="fee-item">
+                <span><?= h($financial['status'] === 'free' ? 'RA 10931 (Free Education)' : 'N/A') ?></span>
+                <span class="fee-amount">&#8369;0.00</span>
+            </div>
+            <div style="border-top: 1px solid #16a34a; padding-top: 8px; margin-top: 5px;">
+                <div class="fee-item">
+                    <span style="font-size: 10px;">Tuition</span>
+                    <span style="font-size: 10px; text-align: right;">&#8369;<?= h(format_money($financial['status'] === 'free' ? 0 : $tuitionOnly)) ?></span>
+                </div>
+                <div class="fee-item">
+                    <span style="font-size: 10px;">SFDF</span>
+                    <span style="font-size: 10px; text-align: right;">&#8369;<?= h(format_money($financial['status'] === 'free' ? 0 : ($feeItems['assessment'][2]['amount'] ?? 0))) ?></span>
+                </div>
+                <div class="fee-item">
+                    <span style="font-size: 10px;">SRF</span>
+                    <span style="font-size: 10px; text-align: right;">&#8369;<?= h(format_money($financial['status'] === 'free' ? 0 : ($feeItems['assessment'][3]['amount'] ?? 0))) ?></span>
+                </div>
+            </div>
+            <div style="border-top: 1px solid #16a34a; padding-top: 6px; margin-top: 4px;">
+                <div class="summary-title" style="font-size: 9px; margin-bottom: 3px;">Terms of Payment</div>
+                <div style="font-size: 9px; line-height: 1.5;">
+                    <div>First: &#8369;<?= h(format_money($totalDue / 3)) ?></div>
+                    <div>Second: &#8369;<?= h(format_money($totalDue / 3)) ?></div>
+                    <div>Third: &#8369;<?= h(format_money($totalDue - (2 * ($totalDue / 3)))) ?></div>
+                </div>
+            </div>
+        </div>
+        <div class="fee-column" style="grid-column: 1 / -1; border-top: none; font-style: italic; color: #475569; background: #f0fdf4;">
+            <p style="margin: 0; font-size: 10px;">I hereby agree to abide the existing rules and regulation of this institution.</p>
         </div>
     </div>
 
-    <?php if ($feeItemsTotal > 0): ?>
-    <div class="reg-fees">
-        <h3 class="reg-section-title">Other Fees Breakdown</h3>
-        <table class="reg-fi-table">
-            <thead>
-                <tr>
-                    <th>Laboratory Fees</th>
-                    <th>Other Fees</th>
-                    <th>Assessment Fees</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>
-                        <?php $labTotal = 0; ?>
-                        <?php foreach ($feeItems['laboratory'] as $fi): ?>
-                            <?php $labTotal += (float) $fi['amount']; ?>
-                            <div>&#8369;<?= h(format_money((float) $fi['amount'])) ?> — <?= h($fi['fee_name']) ?></div>
-                        <?php endforeach; ?>
-                        <?php if ($labTotal > 0): ?>
-                            <div class="reg-fi-total">Total: &#8369;<?= h(format_money($labTotal)) ?></div>
-                        <?php endif; ?>
-                    </td>
-                    <td>
-                        <?php $otherTotal = 0; ?>
-                        <?php foreach ($feeItems['other'] as $fi): ?>
-                            <?php $otherTotal += (float) $fi['amount']; ?>
-                            <div>&#8369;<?= h(format_money((float) $fi['amount'])) ?> — <?= h($fi['fee_name']) ?></div>
-                        <?php endforeach; ?>
-                        <?php if ($otherTotal > 0): ?>
-                            <div class="reg-fi-total">Total: &#8369;<?= h(format_money($otherTotal)) ?></div>
-                        <?php endif; ?>
-                    </td>
-                    <td>
-                        <?php $assessTotal = 0; ?>
-                        <?php foreach ($feeItems['assessment'] as $fi): ?>
-                            <?php $assessTotal += (float) $fi['amount']; ?>
-                            <div>&#8369;<?= h(format_money((float) $fi['amount'])) ?> — <?= h($fi['fee_name']) ?></div>
-                        <?php endforeach; ?>
-                        <?php if ($assessTotal > 0): ?>
-                            <div class="reg-fi-total">Total: &#8369;<?= h(format_money($assessTotal)) ?></div>
-                        <?php endif; ?>
-                    </td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-    <?php endif; ?>
-
-    <div class="reg-fees">
-        <div class="reg-fees-grid">
-            <div class="reg-fee-item reg-fee-total" style="grid-column: 1 / -1;">
-                <span class="reg-fee-label">Total Amount Due</span>
-                <span class="reg-fee-value">&#8369;<?= h(format_money($totalDue)) ?></span>
-            </div>
-        </div>
-    </div>
-
-    <div class="reg-footer">
-        <div class="reg-signature">
-            <div class="reg-sig-line"></div>
-            <div class="reg-sig-name">Registrar</div>
-            <div class="reg-sig-title">Office of the Registrar</div>
-        </div>
-        <div class="reg-date-printed">
-            Printed: <?= h(date('F j, Y g:i A')) ?>
-        </div>
+    <div class="notes">
+        <strong>NOTE:</strong> Course slots on the above subjects will be confirmed only upon payment.
     </div>
 </div>
 
-<div class="reg-actions no-print">
+<div class="form-actions no-print">
     <a class="btn secondary" href="<?= h(app_url('student/enrollment_status.php')) ?>">&larr; Back to Enrollment Status</a>
     <button class="btn" onclick="window.print()"><span class="material-symbols-outlined" style="font-size:18px;">download</span> Print / Download PDF</button>
 </div>
 
 <style>
 @page {
-    size: A4;
-    margin: 15mm;
+    size: A4 portrait;
+    margin: 8mm;
 }
 
-.reg-form-container {
-    width: 210mm;
-    min-height: 297mm;
-    margin: 0 auto;
-    padding: 18mm 15mm;
-    background: #fff;
-    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-    color: #1e293b;
-    position: relative;
+* {
+    margin: 0;
+    padding: 0;
     box-sizing: border-box;
 }
 
-.reg-header {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding-bottom: 10px;
-    border-bottom: 3px solid #22c55e;
-    margin-bottom: 14px;
+body {
+    font-family: 'Times New Roman', Times, serif;
+    background: #f0fdf4;
+    color: #1e293b;
 }
 
-.reg-logo {
-    width: 52px;
-    height: 52px;
-    background: linear-gradient(135deg, #16a34a, #22c55e);
+.form-wrapper {
+    background: white;
+    max-width: 1000px;
+    margin: 20px auto;
+    padding: 40px;
+    box-shadow: 0 0 15px rgba(22, 163, 74, 0.15);
+    border: 1px solid #bbf7d0;
+    border-radius: 4px;
+    position: relative;
+}
+
+/* Header */
+.header {
+    text-align: center;
+    margin-bottom: 20px;
+    border-bottom: 3px solid #16a34a;
+    padding-bottom: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+}
+
+.header-logo {
+    width: 56px;
+    height: 56px;
+    background: linear-gradient(135deg, #15803d, #22c55e);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -310,277 +329,227 @@ $totalDue = $tuitionOnly + $labFee + $otherFees + $feeItemsTotal;
     flex-shrink: 0;
 }
 
-.reg-logo .material-symbols-outlined {
-    font-size: 28px;
+.header-logo .material-symbols-outlined {
+    font-size: 30px;
     color: #fff;
 }
 
-.reg-title h1 {
-    margin: 0;
-    font-size: 16px;
+.header-text h1 {
+    font-size: 18px;
     font-weight: 700;
-    color: #16a34a;
-    letter-spacing: 0.5px;
+    color: #15803d;
+    letter-spacing: 2px;
+    margin: 2px 0;
 }
 
-.reg-rep {
-    margin: 0;
-    font-size: 10px;
+.rep-text {
+    font-size: 11px;
     color: #64748b;
     letter-spacing: 0.5px;
+    margin: 0;
 }
 
-.reg-title h2 {
-    margin: 2px 0 0;
-    font-size: 18px;
+.campus-sub {
+    font-size: 11px;
+    color: #64748b;
+    margin: 2px 0;
+}
+
+.form-title {
+    font-size: 16px;
     font-weight: 800;
     color: #1e293b;
-    letter-spacing: -0.3px;
+    letter-spacing: 3px;
+    margin: 5px 0 0;
 }
 
-.reg-subtitle {
-    margin: 1px 0 0;
-    font-size: 9px;
-    color: #64748b;
-    letter-spacing: 0.3px;
-}
-
-.reg-stamp {
+/* Stamp */
+.stamp {
     position: absolute;
-    top: 14mm;
-    right: 14mm;
-    width: 78px;
-    height: 78px;
+    top: 28px;
+    right: 35px;
+    width: 80px;
+    height: 80px;
     border: 3px solid #22c55e;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     transform: rotate(-15deg);
-    opacity: 0.6;
+    opacity: 0.5;
 }
 
-.reg-stamp span {
-    font-size: 14px;
+.stamp span {
+    font-size: 13px;
     font-weight: 800;
     color: #22c55e;
     letter-spacing: 1.5px;
 }
 
-.reg-info-grid {
+/* Top Section - Two Columns */
+.top-section {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 6px 10px;
-    margin-bottom: 14px;
-    background: #f0fdf4;
-    padding: 10px 12px;
-    border-radius: 6px;
-    border: 1px solid #bbf7d0;
-}
-
-.reg-info-item {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-}
-
-.reg-label {
-    font-size: 8.5px;
-    font-weight: 600;
-    color: #15803d;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-}
-
-.reg-value {
-    font-size: 11px;
-    font-weight: 600;
-    color: #1e293b;
-}
-
-.reg-section-title {
+    grid-template-columns: 1fr 1fr;
+    gap: 30px;
+    margin-bottom: 20px;
     font-size: 13px;
-    font-weight: 700;
-    color: #16a34a;
-    margin: 0 0 8px;
-    padding-bottom: 4px;
-    border-bottom: 2px solid #bbf7d0;
+    background: #ffffff;
+    padding: 14px 8px;
 }
 
-.reg-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 14px;
-    font-size: 8px;
-}
-
-.reg-table th {
-    background: linear-gradient(135deg, #16a34a, #22c55e);
-    color: #fff;
-    padding: 4px 5px;
-    text-align: left;
-    font-weight: 600;
-    font-size: 7px;
-    text-transform: uppercase;
-    letter-spacing: 0.2px;
-}
-
-.reg-table td {
-    padding: 3px 5px;
-    border-bottom: 1px solid #e2e8f0;
-}
-
-.reg-table tbody tr:nth-child(even) {
-    background: #f0fdf4;
-}
-
-.reg-col-num { width: 20px; text-align: center; }
-.reg-col-code { width: 60px; font-weight: 600; }
-.reg-col-desc { }
-.reg-col-credit { width: 28px; text-align: center; }
-.reg-col-units { width: 30px; text-align: center; }
-
-.reg-table tfoot {
-    background: #f0fdf4;
-    font-weight: 700;
-}
-
-.reg-total-label {
-    padding: 4px 5px;
-    text-align: right;
-    font-size: 8px;
-}
-
-.reg-total-value {
-    padding: 4px 5px;
-    text-align: center;
-    font-size: 8px;
-}
-
-.reg-fees {
-    background: #f0fdf4;
-    padding: 10px 12px;
-    border-radius: 6px;
-    border: 1px solid #bbf7d0;
-    margin-bottom: 18px;
-}
-
-.reg-fees .reg-section-title {
-    margin-bottom: 6px;
-}
-
-.reg-fees-grid {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 6px;
-}
-
-.reg-fee-item {
+.left-column, .right-column {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    padding: 6px 8px;
-    background: #fff;
-    border-radius: 4px;
-    border: 1px solid #bbf7d0;
+    gap: 8px;
 }
 
-.reg-fee-label {
-    font-size: 8.5px;
-    font-weight: 600;
+.form-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.label {
+    font-weight: 800;
+    min-width: 130px;
+    font-size: 12px;
     color: #15803d;
-    text-transform: uppercase;
-}
-
-.reg-fee-value {
-    font-size: 11px;
-    font-weight: 700;
-    color: #1e293b;
-}
-
-.reg-fee-total {
-    background: linear-gradient(135deg, #16a34a, #22c55e) !important;
-    border-color: #16a34a !important;
-}
-
-.reg-fee-total .reg-fee-label,
-.reg-fee-total .reg-fee-value {
-    color: #fff;
-}
-
-.reg-fi-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 6px;
-    font-size: 10px;
-}
-
-.reg-fi-table th {
-    background: #16a34a;
-    color: #fff;
-    padding: 5px 8px;
-    text-align: left;
-    font-weight: 600;
-    font-size: 9px;
     text-transform: uppercase;
     letter-spacing: 0.3px;
 }
 
-.reg-fi-table td {
-    padding: 5px 8px;
-    border: 1px solid #bbf7d0;
-    vertical-align: top;
-    background: #fff;
+.value {
+    flex: 1;
+    padding: 2px 5px;
+    min-height: 18px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #1e293b;
 }
 
-.reg-fi-table td div {
-    padding: 1px 0;
-    font-size: 10px;
+/* Course Table */
+.course-section {
+    margin: 20px 0;
 }
 
-.reg-fi-total {
+.section-header {
+    background: none;
+    border: 1px solid #16a34a;
+    padding: 8px 10px;
     font-weight: 700;
+    font-size: 13px;
+    color: #15803d;
+    letter-spacing: 0.5px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 15px;
+}
+
+table thead {
+    background: none;
+}
+
+table th {
+    background: none;
+    border: 1px solid #16a34a;
+    padding: 7px 8px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
     color: #16a34a;
-    border-top: 1px solid #bbf7d0;
-    margin-top: 4px;
-    padding-top: 4px;
 }
 
-.reg-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    padding-top: 24px;
-    border-top: 2px solid #bbf7d0;
-}
-
-.reg-signature {
-    text-align: center;
-    width: 220px;
-}
-
-.reg-sig-line {
-    border-bottom: 2px solid #1e293b;
-    margin-bottom: 6px;
-    height: 32px;
-}
-
-.reg-sig-name {
-    font-weight: 700;
+table td {
+    border: 1px solid #16a34a;
+    padding: 5px 8px;
+    height: 25px;
     font-size: 12px;
 }
 
-.reg-sig-title {
-    font-size: 10px;
-    color: #64748b;
+table tbody tr:nth-child(even) {
+    background: none;
 }
 
-.reg-date-printed {
-    font-size: 10px;
-    color: #64748b;
+/* Fee Section */
+.fee-section {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 1px;
+    border: 1px solid #16a34a;
+    margin-bottom: 18px;
+    overflow: hidden;
+    background: #16a34a;
 }
 
-.reg-actions {
+.fee-column {
+    background: white;
+    padding: 10px;
+    font-size: 12px;
+}
+
+.fee-column-header {
+    font-weight: 700;
+    border-bottom: 1px solid #16a34a;
+    padding-bottom: 5px;
+    margin-bottom: 6px;
+    color: #15803d;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.fee-item {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    padding-bottom: 3px;
+    border-bottom: 1px solid #dcfce7;
+}
+
+.fee-item:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.fee-label {
+    font-size: 11px;
+    color: #475569;
+}
+
+.fee-amount {
+    font-weight: 700;
+    text-align: right;
+    min-width: 60px;
+    color: #1e293b;
+}
+
+/* Summary Section */
+.summary-title {
+    font-weight: 700;
+    margin-bottom: 8px;
+    font-size: 12px;
+    color: #15803d;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.notes {
+    margin-top: 15px;
+    font-size: 12px;
+    text-align: left;
+    padding: 8px 10px;
+    background: #f0fdf4;
+    border-left: 3px solid #16a34a;
+    color: #475569;
+}
+
+.form-actions {
     display: flex;
     gap: 10px;
     justify-content: center;
@@ -591,70 +560,59 @@ $totalDue = $tuitionOnly + $labFee + $otherFees + $feeItemsTotal;
 .no-print { }
 
 @media print {
-    body { margin: 0; padding: 0; background: #fff; }
-    .no-print { display: none !important; }
+    .no-print, .form-actions { display: none !important; }
+    body { margin: 0; padding: 0; background: #fff; font-size: 10px; }
     .layout { display: block !important; }
     .main { padding: 0 !important; margin: 0 !important; }
     header, .sidebar, .sidebar-overlay { display: none !important; }
-    .reg-form-container {
+    .form-wrapper {
         width: 100%;
-        padding: 0;
+        padding: 4mm 5mm;
         margin: 0;
         box-shadow: none;
-    }
-    .reg-table th {
-        background: linear-gradient(135deg, #16a34a, #22c55e) !important;
-        color: #fff !important;
+        border: none;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }
-    .reg-table tbody tr:nth-child(even) {
-        background: #f0fdf4 !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-    }
-    .reg-table tfoot {
-        background: #f0fdf4 !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-    }
-    .reg-info-grid {
-        background: #f0fdf4 !important;
+    .header { border-bottom-width: 2px; margin-bottom: 2mm; padding-bottom: 1.5mm; gap: 5px; }
+    .header-logo { width: 28px; height: 28px; }
+    .header-logo .material-symbols-outlined { font-size: 15px; }
+    .header-text h1 { font-size: 14px; letter-spacing: 1px; margin: 0; }
+    .rep-text { font-size: 9px; }
+    .campus-sub { font-size: 9px; }
+    .form-title { font-size: 12px; letter-spacing: 2px; margin: 1px 0 0; }
+    .stamp { width: 40px; height: 40px; top: 4mm; right: 6mm; }
+    .stamp span { font-size: 8px; }
+    .top-section {
         border-color: #bbf7d0 !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
+        padding: 2mm 4mm;
+        gap: 6px;
+        margin-bottom: 2mm;
+        font-size: 10px;
     }
-    .reg-fees {
-        background: #f0fdf4 !important;
-        border-color: #bbf7d0 !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-    }
-    .reg-fee-item {
-        border-color: #bbf7d0 !important;
-    }
-    .reg-fee-total {
-        background: linear-gradient(135deg, #16a34a, #22c55e) !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-    }
-    .reg-fi-table th {
-        background: #16a34a !important;
-        color: #fff !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-    }
-    .reg-fi-table td {
-        border-color: #bbf7d0 !important;
-    }
-    .reg-logo {
-        background: linear-gradient(135deg, #16a34a, #22c55e) !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-    }
-    .reg-stamp { opacity: 0.35; }
-    .reg-header { border-bottom-color: #22c55e; }
-    .reg-footer { border-top-color: #bbf7d0; }
+    .left-column, .right-column { gap: 1px; }
+    .form-row { gap: 3px; }
+    .label { font-size: 9px; min-width: 65px; }
+    .value { font-size: 10px; padding: 1px 2px; min-height: auto; }
+    .course-section { margin: 2mm 0; }
+    .section-header { font-size: 10px; padding: 1.5mm 4px; }
+    table { margin-bottom: 2mm; }
+    table th { font-size: 9px; padding: 1.5mm 2px; }
+    table td { font-size: 10px; padding: 1.5mm 2px; height: auto; }
+    table thead { background: none !important; }
+    table th { color: #16a34a !important; }
+    table tbody tr:nth-child(even) { background: none !important; }
+    .section-header { background: none !important; color: #15803d !important; }
+    .fee-section { margin-bottom: 2mm; border-width: 1px; }
+    .fee-column { padding: 1.5mm 3px; font-size: 9px; }
+    .fee-column-header { font-size: 9px; padding-bottom: 1px; margin-bottom: 1px; border-bottom-width: 1px; }
+    .fee-item { margin-bottom: 0; padding-bottom: 0; }
+    .fee-label { font-size: 9px; }
+    .fee-amount { font-size: 9px; min-width: 30px; }
+    .summary-title { font-size: 9px; margin-bottom: 1px; }
+    .notes { font-size: 9px; padding: 1.5mm 4px; margin-top: 1mm; background: #f0fdf4 !important; border-left-color: #16a34a !important; }
+    .stamp { opacity: 0.25; }
+    .header-logo { background: linear-gradient(135deg, #15803d, #22c55e) !important; }
 }
 </style>
 
