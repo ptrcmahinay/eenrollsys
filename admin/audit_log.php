@@ -9,7 +9,7 @@ $filterRole = trim($_GET['role'] ?? '');
 $filterDate = trim($_GET['date'] ?? '');
 $filterRequest = (int) ($_GET['request_id'] ?? 0);
 
-$sql = 'SELECT al.*, s.student_number, s.full_name
+$sql = 'SELECT al.*, s.student_number, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name
         FROM enrollment_audit_log al
         LEFT JOIN enrollment_requests er ON er.id = al.request_id
         LEFT JOIN students s ON s.id = er.student_id

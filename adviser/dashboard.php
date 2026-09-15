@@ -21,17 +21,21 @@ $advisorySections = fetch_all(
     ['adviser_id' => (int) $staff['staff_id']]
 );
 
+$currentTermId = (int) (current_term()['id'] ?? 0);
+$termFilter = $currentTermId > 0 ? ' AND er.term_id = :term_id' : '';
+$termParams = $currentTermId > 0 ? ['term_id' => $currentTermId] : [];
+
 $pendingRequests = fetch_all(
-    'SELECT er.id, s.student_number, s.full_name, p.program_code, sec.section_name, er.requested_status
+    'SELECT er.id, s.student_number, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, p.program_code, sec.section_name, er.requested_status
      FROM enrollment_requests er
      INNER JOIN students s ON s.id = er.student_id
      INNER JOIN programs p ON p.programs_id = s.program_id
      LEFT JOIN sections sec ON sec.id = er.requested_section_id
      WHERE er.workflow_status = "submitted" AND er.requested_section_id IN (
          SELECT id FROM sections WHERE adviser_id = :adviser_id
-     )
+     )' . $termFilter . '
      ORDER BY er.created_at DESC',
-    ['adviser_id' => (int) $staff['staff_id']]
+    array_merge(['adviser_id' => (int) $staff['staff_id']], $termParams)
 );
 
 ob_start();

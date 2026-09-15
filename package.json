@@ -1,0 +1,24 @@
+{
+  "name": "e-en-fixed-updated",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "build:css": "npx tailwindcss -i ./includes/tailwind-input.css -o ./includes/tailwind.min.css --minify",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ptrcmahinay/eenrollsys.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ptrcmahinay/eenrollsys/issues"
+  },
+  "homepage": "https://github.com/ptrcmahinay/eenrollsys#readme",
+  "description": "",
+  "devDependencies": {
+    "tailwindcss": "^3.4.19"
+  }
+}

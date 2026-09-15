@@ -56,7 +56,7 @@ $advisory = fetch_all(
 );
 
 $recentGrades = fetch_all(
-    'SELECT s.student_number, s.full_name, sub.subject_code, ss.final_grade, ay.year_label, t.semester
+    'SELECT s.student_number, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, sub.subject_code, ss.final_grade, ay.year_label, t.semester
      FROM student_subjects ss
      INNER JOIN students s ON s.id = ss.student_id
      INNER JOIN subjects sub ON sub.subject_id = ss.subject_id
@@ -76,6 +76,7 @@ ob_start();
     </div>
     <div class="actions-row">
         <a class="btn" href="<?= h(app_url('admin/users.php')) ?>">Manage Users</a>
+        <a class="btn secondary" href="<?= h(app_url('instructor_list.php')) ?>">Instructors</a>
         <a class="btn secondary" href="<?= h(app_url('registrar/academic_term.php')) ?>">Terms & Enrollment</a>
     </div>
 </div>
@@ -120,7 +121,7 @@ ob_start();
 
 <div class="grid cols-2" style="margin-top: 16px;">
     <div class="card">
-        <h3>Instructor student lists</h3>
+        <h3>Instructor student lists <a href="<?= h(app_url('instructor_list.php')) ?>" style="font-size:12px;font-weight:normal;color:#16a34a;">View All</a></h3>
         <div class="table-wrap">
             <table>
                 <thead><tr><th>Instructor</th><th>Handled Subjects</th><th>Enrolled Students</th></tr></thead>

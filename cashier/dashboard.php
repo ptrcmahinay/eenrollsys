@@ -19,7 +19,7 @@ $summary = fetch_one(
 
 $recentPayments = fetch_all(
     'SELECT p.amount AS amount_paid, p.reference_number AS or_number, p.payment_date, p.payment_method,
-            s.student_number, s.full_name, er.payment_status
+            s.student_number, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, er.payment_status
      FROM payments p
      INNER JOIN students s ON s.id = p.student_id
      INNER JOIN enrollment_requests er ON er.id = p.request_id

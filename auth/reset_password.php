@@ -14,7 +14,7 @@ if ($token === '') {
 }
 
 $resetRow = fetch_one(
-    'SELECT t.user_id, t.expires_at, u.email, COALESCE(s.full_name, u.username, u.email) AS display_name
+    'SELECT t.user_id, t.expires_at, u.email, COALESCE(CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name), u.username, u.email) AS display_name
      FROM password_reset_tokens t
      INNER JOIN users u ON u.users_id = t.user_id
      LEFT JOIN students s ON s.id = u.student_id

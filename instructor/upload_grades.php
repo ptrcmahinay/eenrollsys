@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/app.php';
-require_role('instructor');
+require_role(['instructor', 'adviser']);
 require_once __DIR__ . '/../includes/grade_upload_helpers.php';
 
 $staff = current_staff();
@@ -12,17 +12,25 @@ if ($staff === null) {
 }
 
 if (isset($_GET['template_only'])) {
+    $currentTerm = current_term();
+    $termFilter = '';
+    $termParams = ['instructor_id' => (int) $staff['staff_id']];
+    if ($currentTerm !== null) {
+        $termFilter = ' AND o.term_id = :term_id';
+        $termParams['term_id'] = (int) $currentTerm['id'];
+    }
+
     $rows = fetch_all(
-        'SELECT s.student_number, s.full_name, sub.subject_code, COALESCE(ss.final_grade, "") AS final_grade
+        'SELECT s.student_number, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, sub.subject_code, o.sched_code, COALESCE(ss.final_grade, "") AS final_grade
          FROM student_subjects ss
          INNER JOIN students s ON s.id = ss.student_id
          INNER JOIN section_subject_offerings o ON o.id = ss.offering_id
          INNER JOIN subjects sub ON sub.subject_id = o.subject_id
-         WHERE o.instructor_id = :instructor_id
+         WHERE o.instructor_id = :instructor_id' . $termFilter . '
          ORDER BY s.student_number, sub.subject_code',
-        ['instructor_id' => (int) $staff['staff_id']]
+        $termParams
     );
-    $csvRows = array_map(static fn($row) => [$row['student_number'], $row['full_name'], $row['subject_code'], $row['final_grade']], $rows);
+    $csvRows = array_map(static fn($row) => [$row['student_number'], $row['full_name'], $row['subject_code'], $row['sched_code'], $row['final_grade']], $rows);
     output_grade_template_csv($csvRows);
 }
 

@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/app.php';
-require_role('adviser');
+require_role(['adviser', 'instructor']);
 
 $staff = current_staff();
 if ($staff === null) {
@@ -18,7 +18,7 @@ if ($currentTerm === null) {
 
 $filterStatus = trim($_GET['status'] ?? 'all');
 
-$sql = 'SELECT s.id, s.student_number, s.full_name, s.year_level,
+$sql = 'SELECT s.id, s.student_number, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, s.year_level,
                sec.section_name, p.program_code,
                MAX(er.workflow_status) AS latest_status
         FROM students s
@@ -28,7 +28,7 @@ $sql = 'SELECT s.id, s.student_number, s.full_name, s.year_level,
         WHERE sec.adviser_id = :adviser_id';
 $params = ['adviser_id' => (int) $staff['staff_id'], 'term_id' => (int) $currentTerm['id']];
 
-$sql .= ' GROUP BY s.id, s.student_number, s.full_name, s.year_level, sec.section_name, p.program_code';
+$sql .= ' GROUP BY s.id, s.student_number, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name), s.year_level, sec.section_name, p.program_code';
 
 if ($filterStatus === 'not_submitted') {
     $sql .= ' HAVING latest_status IS NULL OR latest_status IN ("rejected", "cancelled")';
@@ -38,7 +38,7 @@ if ($filterStatus === 'not_submitted') {
     $sql .= ' HAVING latest_status = "registrar_approved"';
 }
 
-$sql .= ' ORDER BY sec.section_name, s.full_name';
+$sql .= ' ORDER BY sec.section_name, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name)';
 
 $students = fetch_all($sql, $params);
 

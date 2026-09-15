@@ -116,7 +116,7 @@ if ($requestType === 'enrollment') {
     if ($filterTerm === 0 && $currentTerm) $filterTerm = (int)$currentTerm['id'];
 
     $sql = 'SELECT er.*,
-                   s.student_number, s.full_name, s.year_level, s.id AS student_id,
+                   s.student_number, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, s.year_level, s.id AS student_id,
                    p.program_code, p.programs_id AS program_id,
                    sec.section_name  AS requested_section_name,
                    rsec.section_name AS registrar_section_name,
@@ -133,7 +133,7 @@ if ($requestType === 'enrollment') {
     if ($filterTerm > 0) { $sql .= ' AND er.term_id = :tid'; $params['tid'] = $filterTerm; }
     if ($filterStatus !== '') { $sql .= ' AND er.workflow_status = :ws'; $params['ws'] = $filterStatus; }
     if ($filterSearch !== '') {
-        $sql .= ' AND (s.student_number LIKE :q OR s.full_name LIKE :q2)';
+        $sql .= ' AND (s.student_number LIKE :q OR CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) LIKE :q2)';
         $params['q']  = '%' . $filterSearch . '%';
         $params['q2'] = '%' . $filterSearch . '%';
     }
@@ -161,16 +161,18 @@ if ($requestType === 'enrollment') {
     if ($filterTerm === 0 && $currentTerm) $filterTerm = (int)$currentTerm['id'];
 
     $sql = 'SELECT adr.*,
-                   s.student_number, s.full_name, s.year_level, s.id AS student_id,
+                   s.student_number, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, s.year_level, s.id AS student_id,
                    p.program_code, p.programs_id AS program_id,
                    sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS subject_units,
                    sec.section_name,
+                   o.sched_code,
                    ay.year_label, t.semester
             FROM add_drop_requests adr
             INNER JOIN students s    ON s.id          = adr.student_id
             INNER JOIN programs p    ON p.programs_id = s.program_id
             LEFT  JOIN subjects sub  ON sub.subject_id = adr.subject_id
             LEFT  JOIN sections sec  ON sec.id        = adr.section_id
+            LEFT  JOIN section_subject_offerings o ON o.id = adr.offering_id
             INNER JOIN academic_terms t  ON t.id      = adr.term_id
             INNER JOIN academic_years ay ON ay.id     = t.academic_year_id
             WHERE 1=1';
@@ -178,7 +180,7 @@ if ($requestType === 'enrollment') {
     if ($filterTerm > 0) { $sql .= ' AND adr.term_id = :tid'; $params['tid'] = $filterTerm; }
     if ($filterStatus !== '') { $sql .= ' AND adr.workflow_status = :ws'; $params['ws'] = $filterStatus; }
     if ($filterSearch !== '') {
-        $sql .= ' AND (s.student_number LIKE :q OR s.full_name LIKE :q2 OR sub.subject_code LIKE :q2)';
+        $sql .= ' AND (s.student_number LIKE :q OR CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) LIKE :q2 OR sub.subject_code LIKE :q2)';
         $params['q']  = '%' . $filterSearch . '%';
         $params['q2'] = '%' . $filterSearch . '%';
     }
@@ -327,6 +329,7 @@ ob_start();
                     · <?= h($req['year_label']) ?> / <?= h(semester_label((string)$req['semester'])) ?>
                     <?php if ($requestType === 'add_drop'): ?>
                         · <?= $req['action_type'] === 'add' ? '➕ Add' : '➖ Drop' ?>: <?= h($req['subject_code'] ?: 'Subject #' . $req['subject_id']) ?>
+                        · <span class="badge" style="font-family:monospace;font-size:10px;"><?= h($req['sched_code'] ?? '—') ?></span>
                         · <?= h($req['subject_units']) ?> units
                     <?php else: ?>
                         · <strong><?= h(ucfirst($req['requested_status'])) ?></strong>
@@ -424,10 +427,11 @@ ob_start();
                 </summary>
                 <div class="table-wrap" style="margin-top:8px;">
                     <table>
-                        <thead><tr><th>Code</th><th>Description</th><th>Units</th><th>Section</th><th>Instructor</th></tr></thead>
+                        <thead><tr><th>Sched Code</th><th>Code</th><th>Description</th><th>Units</th><th>Section</th><th>Instructor</th></tr></thead>
                         <tbody>
                         <?php foreach ($items as $item): ?>
                             <tr>
+                                <td><span class="badge" style="font-family:monospace;"><?= h($item['sched_code'] ?? '—') ?></span></td>
                                 <td><?= h($item['subject_code']) ?></td>
                                 <td><?= h($item['subject_description']) ?></td>
                                 <td><?= h($item['units']) ?></td>

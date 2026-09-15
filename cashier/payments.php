@@ -23,7 +23,7 @@ $tab = trim((string) ($_GET['tab'] ?? 'approval'));
 /* ── Pending approval (registrar_forwarded) ── */
 $pendingApproval = fetch_all(
     "SELECT er.id, er.total_amount, er.ra10931_status,
-            s.student_number, s.full_name, s.year_level,
+            s.student_number, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, s.year_level,
             p.program_code, p.lab_fee_per_unit,
             ay.year_label, t.semester
      FROM enrollment_requests er
@@ -51,7 +51,7 @@ if ($filter !== 'all') {
 
 $rows = fetch_all(
     "SELECT er.id, er.total_amount, er.payment_status, er.ra10931_status,
-            s.student_number, s.full_name, p.program_code,
+            s.student_number, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, p.program_code,
             ay.year_label, t.semester,
             COALESCE(SUM(pay.amount), 0) AS total_paid,
             (er.total_amount - COALESCE(SUM(pay.amount), 0)) AS remaining

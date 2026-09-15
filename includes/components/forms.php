@@ -109,8 +109,16 @@ function render_student_form(array $programs, array $sections = [], string $gene
                 <input type="text" name="student_number" value="<?= h($generatedNumber) ?>" required>
             </div>
             <div>
-                <label>Full Name</label>
-                <input type="text" name="full_name" required>
+                <label>First Name</label>
+                <input type="text" name="first_name" required>
+            </div>
+            <div>
+                <label>Middle Name</label>
+                <input type="text" name="middle_name">
+            </div>
+            <div>
+                <label>Last Name</label>
+                <input type="text" name="last_name" required>
             </div>
             <div>
                 <label>Address</label>
@@ -192,9 +200,21 @@ function render_student_edit_form(array $programs, array $sections, array $stude
             </div>
 
             <div>
-                <label>Full Name</label>
-                <input type="text" name="full_name"
-                       value="<?= h($student['full_name'] ?? '') ?>" required>
+                <label>First Name</label>
+                <input type="text" name="first_name"
+                       value="<?= h($student['first_name'] ?? '') ?>" required>
+            </div>
+
+            <div>
+                <label>Middle Name</label>
+                <input type="text" name="middle_name"
+                       value="<?= h($student['middle_name'] ?? '') ?>">
+            </div>
+
+            <div>
+                <label>Last Name</label>
+                <input type="text" name="last_name"
+                       value="<?= h($student['last_name'] ?? '') ?>" required>
             </div>
 
             <div>
@@ -302,6 +322,7 @@ function render_staff_form(array $departments, array $roles = []): string
 
 function render_curriculum_subject_form(): string
 {
+    $departments = fetch_all('SELECT dept_id, department_code, department_name FROM departments WHERE status = "active" ORDER BY department_code');
     ob_start(); ?>
     <form method="post">
         <input type="hidden" name="action" value="add_subject">
@@ -313,6 +334,15 @@ function render_curriculum_subject_form(): string
             <div>
                 <label>Description</label>
                 <input type="text" name="subject_description" required>
+            </div>
+            <div>
+                <label>Teaching Department</label>
+                <select name="teaching_department_id">
+                    <option value="">— Select Department —</option>
+                    <?php foreach ($departments as $d): ?>
+                        <option value="<?= h((string)$d['dept_id']) ?>"><?= h($d['department_code'] . ' — ' . $d['department_name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
             </div>
             <div>
                 <label>Lecture Credit</label>
@@ -339,98 +369,172 @@ function render_curriculum_subject_form(): string
 }
 
 
-function render_curriculum_line_form(array $programs, array $subjects): string
+function render_curriculum_line_form(array $programs, array $subjects, int $selectedProgramId = 0): string
 {
     ob_start(); ?>
     <form method="post">
         <input type="hidden" name="action" value="add_curriculum">
-        <div class="form-grid">
-            <div>
+        <div style="display:flex;gap:12px;margin-bottom:12px;align-items:end;">
+            <div style="flex:0 0 220px;">
                 <label>Program</label>
-                <select name="program_id" required>
+                <select name="program_id" id="curr_program_id" required>
                     <?php foreach ($programs as $p): ?>
-                        <option value="<?= h($p['programs_id']) ?>"><?= h($p['program_code']) ?></option>
+                        <option value="<?= h($p['programs_id']) ?>" <?= (int)$p['programs_id'] === $selectedProgramId ? 'selected' : '' ?>><?= h($p['program_code']) ?> — <?= h($p['program_name']) ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div>
-                <label>Subject</label>
-                <input type="text" class="subject-search" placeholder="Type to search subjects..." oninput="filterSubjectSelect(this, 'subject_id')" style="margin-bottom:4px;font-size:12px;padding:4px 8px;width:100%;box-sizing:border-box;">
-                <select name="subject_id" id="subject_id" required style="max-height:200px;">
-                    <option value="">— Select —</option>
-                    <?php foreach ($subjects as $s): ?>
-                        <option value="<?= h($s['subject_id']) ?>" data-code="<?= h($s['subject_code']) ?>" data-desc="<?= h($s['subject_description']) ?>"><?= h($s['subject_code'] . ' - ' . $s['subject_description']) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <div>
+            <div style="flex:0 0 100px;">
                 <label>Curriculum Label</label>
                 <input type="text" name="curriculum_label" value="2024">
             </div>
-            <div>
-                <label>Year Level</label>
-                <select name="year_level">
-                    <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
-                </select>
-            </div>
-            <div>
-                <label>Semester</label>
-                <select name="semester">
-                    <option value="1st">1st</option>
-                    <option value="2nd">2nd</option>
-                    <option value="mid">Midyear</option>
-                </select>
-            </div>
-            <div>
-                <label>Standing (optional)</label>
-                <select name="standing">
-                    <option value="">None</option>
-                    <option value="2nd Year Standing">2nd Year Standing</option>
-                    <option value="3rd Year Standing">3rd Year Standing</option>
-                    <option value="4th Year Standing">4th Year Standing</option>
-                </select>
-            </div>
-            <div>
-                <label>Prerequisite 1 (optional)</label>
-                <input type="text" class="subject-search" placeholder="Search..." oninput="filterSubjectSelect(this, 'prereq1_id')" style="margin-bottom:4px;font-size:12px;padding:4px 8px;width:100%;box-sizing:border-box;">
-                <select name="prerequisite_subject_id" id="prereq1_id">
-                    <option value="">None</option>
-                    <?php foreach ($subjects as $s): ?>
-                        <option value="<?= h($s['subject_id']) ?>" data-code="<?= h($s['subject_code']) ?>" data-desc="<?= h($s['subject_description']) ?>"><?= h($s['subject_code']) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <div>
-                <label>Prerequisite 2 (optional)</label>
-                <input type="text" class="subject-search" placeholder="Search..." oninput="filterSubjectSelect(this, 'prereq2_id')" style="margin-bottom:4px;font-size:12px;padding:4px 8px;width:100%;box-sizing:border-box;">
-                <select name="prerequisite_subject_2_id" id="prereq2_id">
-                    <option value="">None</option>
-                    <?php foreach ($subjects as $s): ?>
-                        <option value="<?= h($s['subject_id']) ?>" data-code="<?= h($s['subject_code']) ?>" data-desc="<?= h($s['subject_description']) ?>"><?= h($s['subject_code']) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <div>
-                <label>Prerequisite 3 (optional)</label>
-                <input type="text" class="subject-search" placeholder="Search..." oninput="filterSubjectSelect(this, 'prereq3_id')" style="margin-bottom:4px;font-size:12px;padding:4px 8px;width:100%;box-sizing:border-box;">
-                <select name="prerequisite_subject_3_id" id="prereq3_id">
-                    <option value="">None</option>
-                    <?php foreach ($subjects as $s): ?>
-                        <option value="<?= h($s['subject_id']) ?>" data-code="<?= h($s['subject_code']) ?>" data-desc="<?= h($s['subject_description']) ?>"><?= h($s['subject_code']) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
         </div>
-        <div class="form-actions">
-            <button class="btn">Add Curriculum Line</button>
+
+        <div class="table-wrap" style="max-height:360px;overflow-y:auto;">
+        <table id="currLineTable" style="width:100%;font-size:12px;border-collapse:collapse;">
+            <thead>
+                <tr style="background:#f1f5f9;">
+                    <th style="padding:6px 8px;text-align:left;width:180px;">Subject</th>
+                    <th style="padding:6px 4px;text-align:center;width:50px;">Year</th>
+                    <th style="padding:6px 4px;text-align:center;width:65px;">Semester</th>
+                    <th style="padding:6px 4px;text-align:center;width:75px;">Standing</th>
+                    <th style="padding:6px 8px;text-align:left;width:140px;">Prereq 1</th>
+                    <th style="padding:6px 8px;text-align:left;width:140px;display:none;" class="prereq2-col">Prereq 2</th>
+                    <th style="padding:6px 8px;text-align:left;width:140px;display:none;" class="prereq3-col">Prereq 3</th>
+                    <th style="padding:6px 4px;text-align:center;width:36px;"></th>
+                </tr>
+            </thead>
+            <tbody id="currLineRows">
+                <tr>
+                    <td>
+                        <input type="text" class="curr-subject-search" placeholder="Search..." oninput="filterCurrSubject(this)" style="width:100%;box-sizing:border-box;font-size:11px;padding:3px 6px;margin-bottom:2px;">
+                        <select name="subject_id[]" required style="width:100%;font-size:11px;max-height:120px;">
+                            <option value="">— Select —</option>
+                            <?php foreach ($subjects as $s): ?>
+                                <option value="<?= h($s['subject_id']) ?>" data-code="<?= h($s['subject_code']) ?>" data-desc="<?= h($s['subject_description']) ?>"><?= h($s['subject_code'] . ' - ' . $s['subject_description']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </td>
+                    <td>
+                        <select name="year_level[]" style="width:100%;font-size:11px;">
+                            <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
+                        </select>
+                    </td>
+                    <td>
+                        <select name="semester[]" style="width:100%;font-size:11px;">
+                            <option value="1st">1st</option><option value="2nd">2nd</option><option value="mid">Mid</option>
+                        </select>
+                    </td>
+                    <td>
+                        <select name="standing[]" style="width:100%;font-size:11px;">
+                            <option value="">—</option>
+                            <option value="2nd Year Standing">2nd</option>
+                            <option value="3rd Year Standing">3rd</option>
+                            <option value="4th Year Standing">4th</option>
+                        </select>
+                    </td>
+                    <td>
+                        <input type="text" class="curr-subject-search" placeholder="Search..." oninput="filterCurrSubject(this)" style="width:100%;box-sizing:border-box;font-size:11px;padding:3px 6px;margin-bottom:2px;">
+                        <select name="prerequisite_subject_id[]" style="width:100%;font-size:11px;max-height:120px;">
+                            <option value="">None</option>
+                            <?php foreach ($subjects as $s): ?>
+                                <option value="<?= h($s['subject_id']) ?>" data-code="<?= h($s['subject_code']) ?>" data-desc="<?= h($s['subject_description']) ?>"><?= h($s['subject_code'] . ' - ' . $s['subject_description']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </td>
+                    <td class="prereq2-col" style="display:none;">
+                        <input type="text" class="curr-subject-search" placeholder="Search..." oninput="filterCurrSubject(this)" style="width:100%;box-sizing:border-box;font-size:11px;padding:3px 6px;margin-bottom:2px;">
+                        <select name="prerequisite_subject_2_id[]" style="width:100%;font-size:11px;max-height:120px;">
+                            <option value="">None</option>
+                            <?php foreach ($subjects as $s): ?>
+                                <option value="<?= h($s['subject_id']) ?>" data-code="<?= h($s['subject_code']) ?>" data-desc="<?= h($s['subject_description']) ?>"><?= h($s['subject_code'] . ' - ' . $s['subject_description']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </td>
+                    <td class="prereq3-col" style="display:none;">
+                        <input type="text" class="curr-subject-search" placeholder="Search..." oninput="filterCurrSubject(this)" style="width:100%;box-sizing:border-box;font-size:11px;padding:3px 6px;margin-bottom:2px;">
+                        <select name="prerequisite_subject_3_id[]" style="width:100%;font-size:11px;max-height:120px;">
+                            <option value="">None</option>
+                            <?php foreach ($subjects as $s): ?>
+                                <option value="<?= h($s['subject_id']) ?>" data-code="<?= h($s['subject_code']) ?>" data-desc="<?= h($s['subject_description']) ?>"><?= h($s['subject_code'] . ' - ' . $s['subject_description']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </td>
+                    <td style="text-align:center;">
+                        <button type="button" class="icon-btn danger" onclick="this.closest('tr').remove()" style="font-size:14px;padding:2px 6px;">✕</button>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:10px;align-items:center;">
+            <button type="button" class="btn secondary" style="font-size:12px;" onclick="addCurrLineRow()">+ Add Subject</button>
+            <span style="flex:1;"></span>
+            <button type="button" class="btn secondary" style="font-size:11px;" onclick="togglePrereqCol(2)">+ Prereq 2</button>
+            <button type="button" class="btn secondary" style="font-size:11px;" onclick="togglePrereqCol(3)">+ Prereq 3</button>
+            <button class="btn" type="submit" style="font-size:12px;">Add All Lines</button>
         </div>
     </form>
+    <script>
+    function filterCurrSubject(input) {
+        var q = input.value.toLowerCase();
+        var select = input.nextElementSibling;
+        if (!select) return;
+        var first = null;
+        for (var i = 0; i < select.options.length; i++) {
+            var opt = select.options[i];
+            var code = (opt.getAttribute('data-code') || '').toLowerCase();
+            var desc = (opt.getAttribute('data-desc') || '').toLowerCase();
+            var match = (code.indexOf(q) !== -1 || desc.indexOf(q) !== -1);
+            opt.style.display = match ? '' : 'none';
+            if (match && !opt.selected && first === null && opt.value !== '') first = opt;
+        }
+        if (q.length > 0 && first) select.value = first.value;
+    }
+
+    function togglePrereqCol(n) {
+        var colClass = 'prereq' + n + '-col';
+        var cols = document.querySelectorAll('.' + colClass);
+        var anyHidden = false;
+        cols.forEach(function(c) { if (c.style.display === 'none') anyHidden = true; });
+        cols.forEach(function(c) { c.style.display = anyHidden ? '' : 'none'; });
+    }
+
+    function addCurrLineRow() {
+        var tbody = document.getElementById('currLineRows');
+        var ref = tbody.querySelector('tr');
+        var p2 = ref.querySelector('.prereq2-col');
+        var p3 = ref.querySelector('.prereq3-col');
+        var showP2 = p2 && p2.style.display !== 'none';
+        var showP3 = p3 && p3.style.display !== 'none';
+
+        var subjectOpts = document.querySelector('#currLineRows select[name="subject_id[]"]').innerHTML;
+        var prereqOpts = document.querySelector('#currLineRows select[name="prerequisite_subject_id[]"]').innerHTML;
+
+        var row = document.createElement('tr');
+        var html = '<td>' +
+            '<input type="text" class="curr-subject-search" placeholder="Search..." oninput="filterCurrSubject(this)" style="width:100%;box-sizing:border-box;font-size:11px;padding:3px 6px;margin-bottom:2px;">' +
+            '<select name="subject_id[]" required style="width:100%;font-size:11px;max-height:120px;">' + subjectOpts + '</select></td>' +
+            '<td><select name="year_level[]" style="width:100%;font-size:11px;"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></td>' +
+            '<td><select name="semester[]" style="width:100%;font-size:11px;"><option value="1st">1st</option><option value="2nd">2nd</option><option value="mid">Mid</option></select></td>' +
+            '<td><select name="standing[]" style="width:100%;font-size:11px;"><option value="">—</option><option value="2nd Year Standing">2nd</option><option value="3rd Year Standing">3rd</option><option value="4th Year Standing">4th</option></select></td>' +
+            '<td><input type="text" class="curr-subject-search" placeholder="Search..." oninput="filterCurrSubject(this)" style="width:100%;box-sizing:border-box;font-size:11px;padding:3px 6px;margin-bottom:2px;">' +
+            '<select name="prerequisite_subject_id[]" style="width:100%;font-size:11px;max-height:120px;">' + prereqOpts + '</select></td>' +
+            '<td class="prereq2-col" style="' + (showP2 ? '' : 'display:none;') + '"><input type="text" class="curr-subject-search" placeholder="Search..." oninput="filterCurrSubject(this)" style="width:100%;box-sizing:border-box;font-size:11px;padding:3px 6px;margin-bottom:2px;">' +
+            '<select name="prerequisite_subject_2_id[]" style="width:100%;font-size:11px;max-height:120px;">' + prereqOpts + '</select></td>' +
+            '<td class="prereq3-col" style="' + (showP3 ? '' : 'display:none;') + '"><input type="text" class="curr-subject-search" placeholder="Search..." oninput="filterCurrSubject(this)" style="width:100%;box-sizing:border-box;font-size:11px;padding:3px 6px;margin-bottom:2px;">' +
+            '<select name="prerequisite_subject_3_id[]" style="width:100%;font-size:11px;max-height:120px;">' + prereqOpts + '</select></td>' +
+            '<td style="text-align:center;"><button type="button" class="icon-btn danger" onclick="this.closest(\'tr\').remove()" style="font-size:14px;padding:2px 6px;">✕</button></td>';
+        row.innerHTML = html;
+        tbody.appendChild(row);
+    }
+    </script>
     <?php return ob_get_clean();
 }
 
-function render_curriculum_line_form_multi_prereq(array $programs, array $subjects): string
+function render_curriculum_line_form_multi_prereq(array $programs, array $subjects, int $selectedProgramId = 0): string
 {
-    return render_curriculum_line_form($programs, $subjects);
+    return render_curriculum_line_form($programs, $subjects, $selectedProgramId);
 }
 
 function render_bulk_curriculum_form(array $programs, array $subjects): string
@@ -563,28 +667,31 @@ function render_edit_curriculum_form(array $programs, array $subjects): string
             </div>
             <div>
                 <label>Prerequisite 1 (optional)</label>
+                <input type="text" class="subject-search" placeholder="Search..." oninput="filterSubjectSelect(this, 'ec_prereq1')" style="margin-bottom:4px;font-size:12px;padding:4px 8px;width:100%;box-sizing:border-box;">
                 <select name="prerequisite_subject_id" id="ec_prereq1">
                     <option value="">None</option>
                     <?php foreach ($subjects as $s): ?>
-                        <option value="<?= h($s['subject_id']) ?>"><?= h($s['subject_code']) ?></option>
+                        <option value="<?= h($s['subject_id']) ?>" data-code="<?= h($s['subject_code']) ?>" data-desc="<?= h($s['subject_description']) ?>"><?= h($s['subject_code'] . ' - ' . $s['subject_description']) ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
             <div>
                 <label>Prerequisite 2 (optional)</label>
+                <input type="text" class="subject-search" placeholder="Search..." oninput="filterSubjectSelect(this, 'ec_prereq2')" style="margin-bottom:4px;font-size:12px;padding:4px 8px;width:100%;box-sizing:border-box;">
                 <select name="prerequisite_subject_2_id" id="ec_prereq2">
                     <option value="">None</option>
                     <?php foreach ($subjects as $s): ?>
-                        <option value="<?= h($s['subject_id']) ?>"><?= h($s['subject_code']) ?></option>
+                        <option value="<?= h($s['subject_id']) ?>" data-code="<?= h($s['subject_code']) ?>" data-desc="<?= h($s['subject_description']) ?>"><?= h($s['subject_code'] . ' - ' . $s['subject_description']) ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
             <div>
                 <label>Prerequisite 3 (optional)</label>
+                <input type="text" class="subject-search" placeholder="Search..." oninput="filterSubjectSelect(this, 'ec_prereq3')" style="margin-bottom:4px;font-size:12px;padding:4px 8px;width:100%;box-sizing:border-box;">
                 <select name="prerequisite_subject_3_id" id="ec_prereq3">
                     <option value="">None</option>
                     <?php foreach ($subjects as $s): ?>
-                        <option value="<?= h($s['subject_id']) ?>"><?= h($s['subject_code']) ?></option>
+                        <option value="<?= h($s['subject_id']) ?>" data-code="<?= h($s['subject_code']) ?>" data-desc="<?= h($s['subject_description']) ?>"><?= h($s['subject_code'] . ' - ' . $s['subject_description']) ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
@@ -802,6 +909,11 @@ function render_subject_edit_modal_body(): string
 
 function render_subject_manage_modal_body(array $subjects, bool $canManage = true): string
 {
+    $departments = fetch_all('SELECT dept_id, department_code FROM departments WHERE status = "active" ORDER BY department_code');
+    $deptOptions = '<option value="">—</option>';
+    foreach ($departments as $d) {
+        $deptOptions .= '<option value="' . h((string)$d['dept_id']) . '">' . h($d['department_code']) . '</option>';
+    }
     ob_start(); ?>
     <?php if ($canManage): ?>
     <div style="margin-bottom:12px;border:1px solid var(--border);border-radius:6px;padding:8px 12px;">
@@ -815,12 +927,12 @@ function render_subject_manage_modal_body(array $subjects, bool $canManage = tru
             <table id="bulkAddTable" style="width:100%;font-size:12px;">
                 <thead>
                     <tr>
-                        <th style="width:100px;">Code</th>
+                        <th style="width:110px;">Code</th>
                         <th>Description</th>
-                        <th style="width:60px;">Lec Cr</th>
-                        <th style="width:60px;">Lab Cr</th>
-                        <th style="width:60px;">Lec Hrs</th>
-                        <th style="width:60px;">Lab Hrs</th>
+                        <th style="width:90px;">Lec Cr</th>
+                        <th style="width:90px;">Lab Cr</th>
+                        <th style="width:90px;">Lec Hrs</th>
+                        <th style="width:90px;">Lab Hrs</th>
                         <th style="width:36px;"></th>
                     </tr>
                 </thead>
@@ -860,20 +972,24 @@ function render_subject_manage_modal_body(array $subjects, bool $canManage = tru
     <?php endif; ?>
 
     <h4 style="margin:8px 0;">Existing Subjects</h4>
+    <div style="margin-bottom:8px;">
+        <input type="text" id="manageSubjectSearch" placeholder="Search by code or description..." oninput="filterManageSubjectTable(this.value)" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;">
+    </div>
     <form method="post" id="bulkSubjectForm">
     <input type="hidden" name="action" value="bulk_update_subjects">
     <div class="dt" data-dt-page-size="8">
       <div class="table-wrap">
-        <table>
+        <table id="manageSubjectTable" style="width:100%;font-size:12px;">
             <thead>
                 <tr>
-                    <th data-dt-key="code">Code</th>
-                    <th data-dt-key="desc">Description</th>
-                    <th data-dt-key="leccr">Lec Cr</th>
-                    <th data-dt-key="labcr">Lab Cr</th>
-                    <th data-dt-key="lech">Lec Hrs</th>
-                    <th data-dt-key="labh">Lab Hrs</th>
-                    <?php if ($canManage): ?><th data-dt-no-sort data-dt-no-export>Actions</th><?php endif; ?>
+                    <th style="width:110px;">Code</th>
+                    <th>Description</th>
+                    <th style="width:90px;">Teach Dept</th>
+                    <th style="width:90px;">Lec Cr</th>
+                    <th style="width:90px;">Lab Cr</th>
+                    <th style="width:90px;">Lec Hrs</th>
+                    <th style="width:90px;">Lab Hrs</th>
+                    <?php if ($canManage): ?><th style="width:50px;" data-dt-no-sort data-dt-no-export></th><?php endif; ?>
                 </tr>
             </thead>
             <tbody>
@@ -882,12 +998,20 @@ function render_subject_manage_modal_body(array $subjects, bool $canManage = tru
                     <td><strong><?= h($s['subject_code']) ?></strong></td>
                     <td><?= h($s['subject_description']) ?></td>
                     <td>
-                        <input type="hidden" name="subject_ids[]" value="<?= h((string)$s['subject_id']) ?>">
-                        <input type="number" step="0.5" name="lec_credit[<?= h((string)$s['subject_id']) ?>]" value="<?= h((string)($s['lec_credit'] ?? 0)) ?>" min="0" style="width:64px;">
+                        <select name="teaching_department_id[<?= h((string)$s['subject_id']) ?>]" style="width:80px;font-size:11px;">
+                            <option value="">—</option>
+                            <?php foreach ($departments as $d): ?>
+                                <option value="<?= h((string)$d['dept_id']) ?>" <?= ((int)($s['teaching_department_id'] ?? 0) === (int)$d['dept_id']) ? 'selected' : '' ?>><?= h($d['department_code']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
                     </td>
-                    <td><input type="number" step="0.5" name="lab_credit[<?= h((string)$s['subject_id']) ?>]" value="<?= h((string)($s['lab_credit'] ?? 0)) ?>" min="0" style="width:64px;"></td>
-                    <td><input type="number" step="0.5" name="lec_hours[<?= h((string)$s['subject_id']) ?>]" value="<?= h((string)($s['lec_hours'] ?? 0)) ?>" min="0" style="width:64px;"></td>
-                    <td><input type="number" step="0.5" name="lab_hours[<?= h((string)$s['subject_id']) ?>]" value="<?= h((string)($s['lab_hours'] ?? 0)) ?>" min="0" style="width:64px;"></td>
+                    <td>
+                        <input type="hidden" name="subject_ids[]" value="<?= h((string)$s['subject_id']) ?>">
+                        <input type="number" step="0.5" name="lec_credit[<?= h((string)$s['subject_id']) ?>]" value="<?= h((string)($s['lec_credit'] ?? 0)) ?>" min="0" style="width:80px;">
+                    </td>
+                    <td><input type="number" step="0.5" name="lab_credit[<?= h((string)$s['subject_id']) ?>]" value="<?= h((string)($s['lab_credit'] ?? 0)) ?>" min="0" style="width:80px;"></td>
+                    <td><input type="number" step="0.5" name="lec_hours[<?= h((string)$s['subject_id']) ?>]" value="<?= h((string)($s['lec_hours'] ?? 0)) ?>" min="0" style="width:80px;"></td>
+                    <td><input type="number" step="0.5" name="lab_hours[<?= h((string)$s['subject_id']) ?>]" value="<?= h((string)($s['lab_hours'] ?? 0)) ?>" min="0" style="width:80px;"></td>
                     <?php if ($canManage): ?>
                     <td>
                         <button class="icon-btn danger" type="button" title="Delete" onclick="deleteSubject(<?= (int)$s['subject_id'] ?>)">
@@ -916,6 +1040,15 @@ function render_subject_manage_modal_body(array $subjects, bool $canManage = tru
             document.getElementById('deleteSubjectId').value = id;
             document.getElementById('deleteSubjectForm').submit();
         }
+    }
+    function filterManageSubjectTable(query) {
+        var q = query.toLowerCase();
+        var rows = document.querySelectorAll('#manageSubjectTable tbody tr');
+        rows.forEach(function(row) {
+            var code = (row.cells[0] ? row.cells[0].textContent : '').toLowerCase();
+            var desc = (row.cells[1] ? row.cells[1].textContent : '').toLowerCase();
+            row.style.display = (code.indexOf(q) !== -1 || desc.indexOf(q) !== -1) ? '' : 'none';
+        });
     }
     </script>
     <?php return ob_get_clean();

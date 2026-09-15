@@ -30,6 +30,24 @@ if ($existing !== null) {
     redirect('admin/staff.php');
 }
 
+$chairRole = fetch_one("SELECT roles_id FROM roles WHERE role_name = 'department_chair' LIMIT 1");
+$chairRoleId = $chairRole ? (int) $chairRole['roles_id'] : 0;
+
+if ($roleId === $chairRoleId && $deptId !== null) {
+    $existingChair = fetch_one(
+        'SELECT s.staff_id
+         FROM staff s
+         INNER JOIN user_roles ur ON ur.user_id = s.users_id AND ur.role_id = :role_id
+         WHERE s.dept_id = :dept_id AND COALESCE(s.status, \'active\') = \'active\'
+         LIMIT 1',
+        ['role_id' => $chairRoleId, 'dept_id' => $deptId]
+    );
+    if ($existingChair !== null) {
+        flash('error', 'This department already has a department chair assigned.');
+        redirect('admin/staff.php');
+    }
+}
+
 execute_sql('INSERT INTO users (username, email, password, created_at) VALUES (:username, :email, :password, NOW())', [
     'username' => $username,
     'email' => $email,
@@ -48,6 +66,14 @@ execute_sql(
         'dept_id' => $deptId,
     ]
 );
+$staffId = (int) db()->lastInsertId();
+
+if ($roleId === $chairRoleId && $deptId !== null) {
+    execute_sql(
+        'UPDATE departments SET chair_id = :chair_id WHERE dept_id = :dept_id',
+        ['chair_id' => $staffId, 'dept_id' => $deptId]
+    );
+}
 
 flash('success', 'Staff account created.');
 redirect('admin/staff.php');

@@ -80,7 +80,9 @@ function soft_delete(string $table, string $idColumn, int $id): bool
         'subject_id', 'curriculum_id',
     ];
     if (!in_array($idColumn, $allowedIds, true)) return false;
-    $sql = "UPDATE `{$table}` SET `status` = 'inactive' WHERE `{$idColumn}` = :id";
+    $statusCol = $table === 'students' ? 'record_status' : 'status';
+    $statusVal = $table === 'students' ? 'Inactive' : 'inactive';
+    $sql = "UPDATE `{$table}` SET `{$statusCol}` = '{$statusVal}' WHERE `{$idColumn}` = :id";
     return execute_sql($sql, ['id' => $id]);
 }
 

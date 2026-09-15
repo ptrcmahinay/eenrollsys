@@ -8,7 +8,7 @@ $sectionId = (int)($_GET['id'] ?? 0);
 
 $section = fetch_one(
     'SELECT sec.*, p.program_code, p.program_name, d.department_code,
-            s.full_name AS adviser_name
+            CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS adviser_name
      FROM sections sec
      INNER JOIN programs p ON p.programs_id = sec.program_id
      INNER JOIN departments d ON d.dept_id = p.department_id
@@ -33,7 +33,7 @@ $totalStudents = 0;
 $maxSlots = (int)($section['max_slots'] ?? 0);
 
 $params = ['section_id' => $sectionId];
-$sql = "SELECT DISTINCT st.id, st.student_number, st.full_name, st.year_level, st.address,
+$sql = "SELECT DISTINCT st.id, st.student_number, CONCAT(st.first_name, ' ', IFNULL(st.middle_name, ''), ' ', st.last_name) AS full_name, st.year_level, st.address,
                p.program_code, sec.section_name,
                ay.year_label, t.semester AS term_semester,
                er.workflow_status
@@ -55,7 +55,7 @@ if ($semester !== '') {
     $params['semester'] = $semester;
 }
 
-$sql .= " ORDER BY st.full_name";
+$sql .= " ORDER BY st.last_name, st.first_name";
 
 $students = fetch_all($sql, $params);
 $totalStudents = count($students);

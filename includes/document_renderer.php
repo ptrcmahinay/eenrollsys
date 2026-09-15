@@ -106,6 +106,7 @@ function render_registration_form_document(int $studentId, int $termId): void
         <thead>
             <tr>
                 <th>#</th>
+                <th>Sched Code</th>
                 <th>Subject Code</th>
                 <th>Description</th>
                 <th>Units</th>
@@ -117,10 +118,11 @@ function render_registration_form_document(int $studentId, int $termId): void
         <?php foreach ($rows as $index => $row): ?>
             <tr>
                 <td><?= $index + 1 ?></td>
+                <td style="font-family:monospace;font-size:10px;"><?= h($row['sched_code'] ?? '—') ?></td>
                 <td><?= h($row['subject_code']) ?></td>
                 <td><?= h($row['subject_description']) ?></td>
                 <td><?= h($row['units']) ?></td>
-                <td><?= h(trim(($row['day_of_week'] ?? '') . ' ' . ($row['time_range'] ?? ''))) ?></td>
+                <td><?= h(trim(($row['day_of_week'] ?? 'TBA') . ' ' . ($row['time_range'] ?? ''))) ?></td>
                 <td><?= h($row['room'] ?? 'TBA') ?></td>
             </tr>
         <?php endforeach; ?>
@@ -213,6 +215,12 @@ function render_cog_document(int $studentId, ?int $termId = null, ?string $purpo
     $data = cog_data($studentId, $termId);
     $student = $data['student'];
     $purposeText = $purpose ?? setting('cog_purpose', 'For scholarship purposes only.');
+
+    $registrarSig = setting('registrar_signature', '');
+    $registrarSigHtml = $registrarSig !== ''
+        ? '<img src="' . h(app_url('uploads/' . $registrarSig)) . '" style="max-height:40px;margin-bottom:6px;"><br>'
+        : '';
+
     ob_start();
     ?>
     <div class="doc-header">
@@ -240,7 +248,8 @@ function render_cog_document(int $studentId, ?int $termId = null, ?string $purpo
                 <th>Semester</th>
                 <th>Code</th>
                 <th>Title</th>
-                <th>Grade</th>
+                <th>Midterm</th>
+                <th>Final</th>
                 <th>Units</th>
             </tr>
         </thead>
@@ -251,7 +260,8 @@ function render_cog_document(int $studentId, ?int $termId = null, ?string $purpo
                 <td><?= h(semester_label((string) $row['semester'])) ?></td>
                 <td><?= h($row['subject_code']) ?></td>
                 <td><?= h($row['subject_description']) ?></td>
-                <td><?= h($row['final_grade']) ?></td>
+                <td><?= h($row['midterm_grade'] ?? '—') ?></td>
+                <td><?= h($row['final_grade'] ?? '—') ?></td>
                 <td><?= h($row['units']) ?></td>
             </tr>
         <?php endforeach; ?>
@@ -261,8 +271,8 @@ function render_cog_document(int $studentId, ?int $termId = null, ?string $purpo
     <div class="doc-summary">
         <div>
             <table class="doc-table">
-                <tr><th>Total Units</th><td class="text-right"><?= h(format_money($data['total_units'])) ?></td></tr>
-                <tr><th>Credit Units</th><td class="text-right"><?= h(format_money($data['credit_units'])) ?></td></tr>
+                <tr><th>Total Units</th><td class="text-right"><?= h(number_format($data['total_units'], 1)) ?></td></tr>
+                <tr><th>Credit Units</th><td class="text-right"><?= h(number_format($data['credit_units'], 1)) ?></td></tr>
                 <tr><th>Average</th><td class="text-right"><?= h(number_format((float) $data['average'], 2)) ?></td></tr>
             </table>
         </div>

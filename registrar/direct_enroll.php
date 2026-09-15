@@ -49,12 +49,14 @@ if (is_post()) {
                     'INSERT INTO enrollment_requests (
                         student_id, term_id, requested_section_id, requested_status,
                         workflow_status, adviser_status, chair_status, registrar_status,
+                        payment_status,
                         adviser_remark, chair_remark, registrar_remark,
                         ra10931_status, total_units, total_amount,
                         adviser_processed_at, chair_processed_at, registrar_processed_at
                      ) VALUES (
                         :student_id, :term_id, :section_id, "regular",
                         "registrar_approved", "approved", "approved", "approved",
+                        "unpaid",
                         "Direct enrollment by registrar", "Direct enrollment by registrar", "Direct enrollment by registrar",
                         "free", 0, 0,
                         NOW(), NOW(), NOW()
@@ -108,7 +110,7 @@ if (is_post()) {
                 sync_student_section($studentId, $sectionId);
                 db()->commit();
 
-                $student = fetch_one('SELECT full_name FROM students WHERE id = :id', ['id' => $studentId]);
+                $student = fetch_one('SELECT CONCAT(first_name, \' \', IFNULL(middle_name, \'\'), \' \', last_name) AS full_name FROM students WHERE id = :id', ['id' => $studentId]);
                 flash('success', ($student ? $student['full_name'] : 'Student') . ' directly enrolled with ' . $totalUnits . ' units.');
                 redirect('registrar/direct_enroll.php');
             } catch (Throwable $e) {
@@ -123,16 +125,23 @@ if (is_post()) {
 
 if ($lookupStudent) {
     $offerings = fetch_all(
-        'SELECT o.id, o.section_id, sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units,
-                o.day_of_week, o.time_range, o.room, sec.section_name,
-                CONCAT(COALESCE(st.full_name, "TBA")) AS instructor_name
-         FROM section_subject_offerings o
-         INNER JOIN subjects sub ON sub.subject_id = o.subject_id
-         INNER JOIN sections sec ON sec.id = o.section_id
-         LEFT JOIN staff st ON st.staff_id = o.instructor_id
-         WHERE o.term_id = :tid AND o.section_id = :secid
-         ORDER BY sub.subject_code',
-        ['tid' => (int) $currentTerm['id'], 'secid' => (int) ($lookupStudent['section_id'] ?: 0)]
+    'SELECT o.id, o.section_id,
+            COALESCE(sc.sched_code, o.sched_code) AS sched_code,
+            sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units,
+            COALESCE(cs.day, o.day_of_week) AS day_of_week,
+            COALESCE(cs.time_range, o.time_range) AS time_range,
+            COALESCE(cs.room, o.room) AS room,
+            sec.section_name,
+            CONCAT(COALESCE(st.full_name, "TBA")) AS instructor_name
+     FROM section_subject_offerings o
+     LEFT JOIN schedule_codes sc ON sc.offering_id = o.id
+     LEFT JOIN class_schedules cs ON cs.schedule_code_id = sc.id
+     INNER JOIN subjects sub ON sub.subject_id = o.subject_id
+     INNER JOIN sections sec ON sec.id = o.section_id
+     LEFT JOIN staff st ON st.staff_id = COALESCE(cs.instructor_id, o.instructor_id)
+     WHERE o.term_id = :tid AND o.section_id = :secid
+     ORDER BY sub.subject_code',
+    ['tid' => (int) $currentTerm['id'], 'secid' => (int) ($lookupStudent['section_id'] ?: 0)]
     );
     $selectedSectionId = (int) ($lookupStudent['section_id'] ?: 0);
 
@@ -144,13 +153,20 @@ if ($lookupStudent) {
         if (!empty($sections)) {
             $selectedSectionId = (int) $sections[0]['id'];
             $offerings = fetch_all(
-                'SELECT o.id, o.section_id, sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units,
-                        o.day_of_week, o.time_range, o.room, sec.section_name,
+                'SELECT o.id, o.section_id,
+                        COALESCE(sc.sched_code, o.sched_code) AS sched_code,
+                        sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units,
+                        COALESCE(cs.day, o.day_of_week) AS day_of_week,
+                        COALESCE(cs.time_range, o.time_range) AS time_range,
+                        COALESCE(cs.room, o.room) AS room,
+                        sec.section_name,
                         CONCAT(COALESCE(st.full_name, "TBA")) AS instructor_name
                  FROM section_subject_offerings o
+                 LEFT JOIN schedule_codes sc ON sc.offering_id = o.id
+                 LEFT JOIN class_schedules cs ON cs.schedule_code_id = sc.id
                  INNER JOIN subjects sub ON sub.subject_id = o.subject_id
                  INNER JOIN sections sec ON sec.id = o.section_id
-                 LEFT JOIN staff st ON st.staff_id = o.instructor_id
+                 LEFT JOIN staff st ON st.staff_id = COALESCE(cs.instructor_id, o.instructor_id)
                  WHERE o.term_id = :tid AND o.section_id = :secid
                  ORDER BY sub.subject_code',
                 ['tid' => (int) $currentTerm['id'], 'secid' => $selectedSectionId]
@@ -235,11 +251,12 @@ ob_start();
             </div>
             <div class="table-wrap">
                 <table>
-                    <thead><tr><th>Select</th><th>Code</th><th>Description</th><th>Units</th><th>Schedule</th><th>Room</th><th>Instructor</th></tr></thead>
+                    <thead><tr><th>Select</th><th>Sched Code</th><th>Code</th><th>Description</th><th>Units</th><th>Schedule</th><th>Room</th><th>Instructor</th></tr></thead>
                     <tbody>
                     <?php foreach ($offerings as $off): ?>
                         <tr>
                             <td><input type="checkbox" name="offering_ids[]" value="<?= h($off['id']) ?>" class="direct-subject" data-units="<?= h($off['units']) ?>"></td>
+                            <td><span class="badge" style="font-family:monospace;"><?= h($off['sched_code'] ?? '—') ?></span></td>
                             <td><?= h($off['subject_code']) ?></td>
                             <td><?= h($off['subject_description']) ?></td>
                             <td><?= h($off['units']) ?></td>

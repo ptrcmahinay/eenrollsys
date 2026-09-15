@@ -51,7 +51,7 @@ if ($requestId <= 0) {
 
 $req = fetch_one(
     'SELECT er.*,
-            s.student_number, s.full_name, s.year_level, s.id AS student_id,
+            s.student_number, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, s.year_level, s.id AS student_id,
             p.program_code, p.program_name,
             sec.section_name AS requested_section_name,
             rsec.section_name AS registrar_section_name,

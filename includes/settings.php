@@ -14,6 +14,7 @@ $tabs = [
     ['key' => 'notifications', 'label' => 'Notifications', 'icon' => 'notifications', 'roles' => ['all']],
     ['key' => 'enrollment', 'label' => 'Enrollment', 'icon' => 'app_registration', 'roles' => ['admin', 'registrar']],
     ['key' => 'academic', 'label' => 'Academic', 'icon' => 'school', 'roles' => ['admin', 'registrar']],
+    ['key' => 'grading', 'label' => 'Grading', 'icon' => 'grading', 'roles' => ['admin', 'registrar']],
     ['key' => 'institution', 'label' => 'Institution', 'icon' => 'business', 'roles' => ['admin']],
     ['key' => 'smtp', 'label' => 'Email / SMTP', 'icon' => 'email', 'roles' => ['admin']],
 ];

@@ -3,6 +3,22 @@ declare(strict_types=1);
 
 $menu = [];
 $role = $user_role ?? (current_user()['role'] ?? 'student');
+$allRoles = current_user()['roles'] ?? [];
+
+if (in_array('instructor', $allRoles, true) && in_array('adviser', $allRoles, true)) {
+    $menu = [
+        ['label' => 'Dashboard',              'path' => 'instructor/dashboard.php',    'icon' => 'dashboard'],
+        ['type' => 'header', 'label' => 'Teaching'],
+        ['label' => 'My Subjects',            'path' => 'instructor/subjects.php',     'icon' => 'menu_book'],
+        ['label' => 'Student List / Grades',  'path' => 'instructor/students.php',     'icon' => 'groups'],
+        ['label' => 'View Grades',            'path' => 'instructor/view_grades.php',  'icon' => 'grading'],
+        ['label' => 'Grade Input',            'path' => 'instructor/grade_input.php',  'icon' => 'edit_note'],
+        ['label' => 'Upload Grades',          'path' => 'instructor/upload_grades.php','icon' => 'upload'],
+        ['type' => 'header', 'label' => 'Advising'],
+        ['label' => 'Enrollment Requests',    'path' => 'adviser/requests.php',        'icon' => 'approval'],
+        ['label' => 'Advisory Class',         'path' => 'adviser/class_view.php',      'icon' => 'groups'],
+    ];
+} else {
 
 switch ($role) {
     case 'admin':
@@ -18,6 +34,9 @@ switch ($role) {
             ['label' => 'Departments & Sections', 'path' => 'registrar/departments.php', 'icon' => 'domain'],
             ['label' => 'Academic Term',   'path' => 'registrar/academic_term.php',     'icon' => 'calendar_month'],
             ['label' => 'Subject Offerings', 'path' => 'registrar/offerings.php',       'icon' => 'event_note'],
+            ['label' => 'Schedule Codes',   'path' => 'registrar/schedule_codes.php',  'icon' => 'qr_code_2'],
+            ['label' => 'Class Schedules',  'path' => 'registrar/class_schedules.php', 'icon' => 'calendar_clock'],
+            ['label' => 'Schedule Change Requests', 'path' => 'registrar/schedule_change_requests.php', 'icon' => 'swap_horiz'],
             
             ['type' => 'group', 'label' => 'Enrollment', 'icon' => 'app_registration', 'children' => [
                 ['label' => 'Enrollment Dashboard', 'path' => 'admin/enrollment_dashboard.php','icon' => 'dashboard'],
@@ -44,6 +63,9 @@ switch ($role) {
             ['label' => 'Departments & Sections', 'path' => 'registrar/departments.php', 'icon' => 'domain'],
             ['label' => 'Academic Term',    'path' => 'registrar/academic_term.php',       'icon' => 'calendar_month'],
             ['label' => 'Subject Offerings', 'path' => 'registrar/offerings.php',      'icon' => 'event_note'],
+            ['label' => 'Schedule Codes',   'path' => 'registrar/schedule_codes.php',  'icon' => 'qr_code_2'],
+            ['label' => 'Class Schedules',  'path' => 'registrar/class_schedules.php', 'icon' => 'calendar_clock'],
+            ['label' => 'Schedule Change Requests', 'path' => 'registrar/schedule_change_requests.php', 'icon' => 'swap_horiz'],
             ['type' => 'header', 'label' => 'Enrollment'],
             ['type' => 'group', 'label' => 'Enrollment', 'icon' => 'app_registration', 'children' => [
                 ['label' => 'Enrollment Dashboard', 'path' => 'admin/enrollment_dashboard.php','icon' => 'dashboard'],
@@ -53,7 +75,11 @@ switch ($role) {
                 ['label' => 'Direct Enroll',    'path' => 'registrar/direct_enroll.php',  'icon' => 'person_add'],
             ]],
             ['type' => 'divider'],
-            ['label' => 'Grade Management', 'path' => 'registrar/upload_grades.php',  'icon' => 'grading'],
+            ['type' => 'header', 'label' => 'Grading'],
+            ['label' => 'Grade Management', 'path' => 'registrar/grade_management.php',  'icon' => 'grading'],
+            ['label' => 'Grade Corrections', 'path' => 'registrar/grade_corrections.php',  'icon' => 'edit_note'],
+            ['label' => 'Grade Scale', 'path' => 'registrar/grade_scale.php',  'icon' => 'rule'],
+            ['label' => 'Academic Honors', 'path' => 'registrar/academic_honors.php',  'icon' => 'emoji_events'],
             ['type' => 'header', 'label' => 'Finance'],
             ['label' => 'Fee Management', 'path' => 'admin/fees.php', 'icon' => 'receipt_long'],
         ];
@@ -64,9 +90,14 @@ switch ($role) {
             ['label' => 'Dashboard',           'path' => 'chair/dashboard.php',         'icon' => 'dashboard'],
             ['type' => 'header', 'label' => 'Academic'],
             ['label' => 'Curriculum',   'path' => 'registrar/curriculum.php',  'icon' => 'menu_book'],
+            ['label' => 'Assign Adviser',      'path' => 'chair/assign_adviser.php',     'icon' => 'person_add'],
+            ['label' => 'List of Instructor',      'path' => 'instructor_list.php',     'icon' => 'person_add'],
+            ['label' => 'Faculty Loading', 'path' => 'chair/faculty_loading.php',  'icon' => 'grading'],
+            ['type' => 'header', 'label' => 'Scheduling'],
+            ['label' => 'Schedule Codes',   'path' => 'registrar/schedule_codes.php',  'icon' => 'qr_code_2'],
+            ['label' => 'Class Schedules',  'path' => 'chair/class_schedules.php',     'icon' => 'calendar_clock'],
             ['type' => 'header', 'label' => 'Enrollment'],
             ['label' => 'Enrollment Requests', 'path' => 'chair/requests.php',           'icon' => 'approval'],
-            ['label' => 'Assign Adviser',      'path' => 'chair/assign_adviser.php',     'icon' => 'person_add'],
             ['label' => 'Instructor Assignments', 'path' => 'chair/assign_instructor.php',  'icon' => 'assignment_ind'],
             // ['type' => 'divider'],
         ];
@@ -89,6 +120,7 @@ switch ($role) {
             ['type' => 'header', 'label' => 'Teaching'],
             ['label' => 'My Subjects',            'path' => 'instructor/subjects.php',     'icon' => 'menu_book'],
             ['label' => 'Student List / Grades',  'path' => 'instructor/students.php',     'icon' => 'groups'],
+            ['label' => 'View Grades',            'path' => 'instructor/view_grades.php',  'icon' => 'grading'],
             ['label' => 'Grade Input',            'path' => 'instructor/grade_input.php',  'icon' => 'edit_note'],
             ['label' => 'Upload Grades',          'path' => 'instructor/upload_grades.php','icon' => 'upload'],
             // ['type' => 'divider'],
@@ -113,6 +145,7 @@ switch ($role) {
             ['type' => 'header', 'label' => 'General'],
             ['label' => 'Dashboard',         'path' => 'student/dashboard.php',        'icon' => 'dashboard'],
             ['label' => 'Current Subjects',  'path' => 'student/subjects.php',         'icon' => 'menu_book'],
+            ['label' => 'Class Schedule',    'path' => 'student/schedule.php',          'icon' => 'calendar_month'],
             ['type' => 'header', 'label' => 'Records'],
             ['label' => 'Grades / COG',      'path' => 'student/grades.php',           'icon' => 'grading'],
             ['label' => 'My Curriculum',    'path' => 'registrar/curriculum.php',     'icon' => 'menu_book'],
@@ -136,6 +169,8 @@ switch ($role) {
         $menu[] = ['label' => 'Settings', 'path' => 'includes/settings.php', 'icon' => 'settings'];
         break;
 }
+
+} // end else (non-combined roles)
 ?>
 <?php foreach ($menu as $item): ?>
 <?php if (($item['type'] ?? '') === 'header'): ?>

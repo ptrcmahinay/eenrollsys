@@ -11,14 +11,17 @@ if ($staff === null) {
 }
 $scope = user_department_scope_clause($staff);
 $params = $scope['params'];
+$currentTermId = (int) (current_term()['id'] ?? 0);
+$termFilter = $currentTermId > 0 ? ' AND er.term_id = :term_id' : '';
+$termParams = $currentTermId > 0 ? ['term_id' => $currentTermId] : [];
 
 $pending = fetch_one(
     'SELECT COUNT(*) AS total
      FROM enrollment_requests er
      INNER JOIN students s ON s.id = er.student_id
      INNER JOIN programs p ON p.programs_id = s.program_id
-     WHERE er.workflow_status = "adviser_approved"' . $scope['sql'],
-    $params
+     WHERE er.workflow_status = "adviser_approved"' . $scope['sql'] . $termFilter,
+    array_merge($params, $termParams)
 )['total'] ?? 0;
 
 $instructors = fetch_all(
@@ -27,7 +30,8 @@ $instructors = fetch_all(
      INNER JOIN user_roles ur ON ur.user_id = st.users_id
      INNER JOIN roles r ON r.roles_id = ur.role_id AND r.role_name = "instructor"
      LEFT JOIN section_subject_offerings o ON o.instructor_id = st.staff_id AND o.term_id = :term_id
-     WHERE st.dept_id = :department_id OR st.dept_id = (SELECT dept_id FROM departments WHERE department_code = "ASD" LIMIT 1)
+     LEFT JOIN subjects sub ON sub.subject_id = o.subject_id
+     WHERE st.dept_id = :department_id
      GROUP BY st.staff_id
      ORDER BY st.full_name',
     [
@@ -37,7 +41,7 @@ $instructors = fetch_all(
 );
 
 $studentList = fetch_all(
-    'SELECT s.student_number, s.full_name, p.program_code, s.year_level, sec.section_name
+    'SELECT s.student_number, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, p.program_code, s.year_level, sec.section_name
      FROM students s
      INNER JOIN programs p ON p.programs_id = s.program_id
      LEFT JOIN sections sec ON sec.id = s.section_id
@@ -55,6 +59,7 @@ ob_start();
     </div>
     <div class="actions-row">
         <a class="btn" href="<?= h(app_url('chair/requests.php')) ?>">Open Requests</a>
+        <a class="btn secondary" href="<?= h(app_url('instructor_list.php')) ?>">Instructors</a>
         <a class="btn secondary" href="<?= h(app_url('chair/assign_instructor.php')) ?>">Assign Instructor</a>
     </div>
 </div>
@@ -67,7 +72,7 @@ ob_start();
 
 <div class="grid cols-2" style="margin-top:16px;">
     <div class="card">
-        <h3>Instructor handled subjects</h3>
+        <h3>Instructor handled subjects <a href="<?= h(app_url('instructor_list.php')) ?>" style="font-size:12px;font-weight:normal;color:#16a34a;">View All</a></h3>
         <div class="table-wrap">
             <table>
                 <thead><tr><th>Instructor</th><th>Offerings This Term</th></tr></thead>

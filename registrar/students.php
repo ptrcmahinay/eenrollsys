@@ -22,7 +22,7 @@ if (is_post() && ($_POST['action'] ?? '') === 'bulk_delete_students') {
     $ids = $_POST['student_id'] ?? [];
     if (is_array($ids) && count($ids) > 0) {
         $ph = implode(',', array_fill(0, count($ids), '?'));
-        execute_sql("UPDATE students SET status = 'inactive' WHERE id IN ({$ph})", $ids);
+        execute_sql("UPDATE students SET record_status = 'Inactive' WHERE id IN ({$ph})", $ids);
         flash('success', count($ids) . ' student(s) deleted.');
     }
     redirect('registrar/students.php');
@@ -30,7 +30,9 @@ if (is_post() && ($_POST['action'] ?? '') === 'bulk_delete_students') {
 
 if (is_post() && ($_POST['action'] ?? '') === 'create_student') {
     $studentNumber = trim($_POST['student_number'] ?? generate_student_number());
-    $fullName = trim($_POST['full_name'] ?? '');
+    $firstName = trim($_POST['first_name'] ?? '');
+    $middleName = trim($_POST['middle_name'] ?? '');
+    $lastName = trim($_POST['last_name'] ?? '');
     $address = trim($_POST['address'] ?? '');
     $programId = (int) ($_POST['program_id'] ?? 0);
     $yearLevel = (int) ($_POST['year_level'] ?? 1);
@@ -38,17 +40,19 @@ if (is_post() && ($_POST['action'] ?? '') === 'create_student') {
     $entryYear = (int) ($_POST['entry_year'] ?? date('Y'));
     $raOverride = trim($_POST['ra10931_override'] ?? 'auto');
 
-    if ($fullName === '' || $address === '' || $programId <= 0) {
+    if ($firstName === '' || $lastName === '' || $address === '' || $programId <= 0) {
         flash('error', 'Please fill out the required face-to-face intake fields.');
         redirect('registrar/students.php');
     }
 
     execute_sql(
-        'INSERT INTO students (student_number, full_name, address, program_id, year_level, section_id, entry_year, ra10931_override, status, created_at)
-         VALUES (:student_number, :full_name, :address, :program_id, :year_level, :section_id, :entry_year, :ra10931_override, "active", NOW())',
+        'INSERT INTO students (student_number, first_name, middle_name, last_name, address, program_id, year_level, section_id, entry_year, ra10931_override, record_status, created_at)
+         VALUES (:student_number, :first_name, :middle_name, :last_name, :address, :program_id, :year_level, :section_id, :entry_year, :ra10931_override, "Active", NOW())',
         [
             'student_number' => $studentNumber,
-            'full_name' => $fullName,
+            'first_name' => $firstName,
+            'middle_name' => $middleName,
+            'last_name' => $lastName,
             'address' => $address,
             'program_id' => $programId,
             'year_level' => $yearLevel,
@@ -77,7 +81,7 @@ $filters = [
     'query' => trim($_GET['query'] ?? ''),
 ];
 
-$sql = 'SELECT s.*, p.program_code, p.program_name, sec.section_name
+$sql = 'SELECT s.*, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, p.program_code, p.program_name, sec.section_name
         FROM students s
         INNER JOIN programs p ON p.programs_id = s.program_id
         LEFT JOIN sections sec ON sec.id = s.section_id
@@ -96,7 +100,7 @@ if ($filters['section_id'] > 0) {
     $params['section_id'] = $filters['section_id'];
 }
 if ($filters['query'] !== '') {
-    $sql .= ' AND (s.student_number LIKE :query OR s.full_name LIKE :query OR s.address LIKE :query)';
+    $sql .= ' AND (s.student_number LIKE :query OR CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) LIKE :query OR s.address LIKE :query)';
     $params['query'] = '%' . $filters['query'] . '%';
 }
 $sql .= ' ORDER BY s.student_number';
@@ -117,8 +121,18 @@ $addStudentModal = '
         </div>
 
         <div>
-            <label>Full Name</label>
-            <input type="text" name="full_name" required>
+            <label>First Name</label>
+            <input type="text" name="first_name" required>
+        </div>
+
+        <div>
+            <label>Middle Name</label>
+            <input type="text" name="middle_name">
+        </div>
+
+        <div>
+            <label>Last Name</label>
+            <input type="text" name="last_name" required>
         </div>
 
         <div>
@@ -311,7 +325,7 @@ $addStudentModal = '
     document.addEventListener('click', function(e) {
     if (e.target.matches('[data-open="modal-add-student"]')) {
         setTimeout(() => {
-            document.querySelector('#modal-add-student input[name="full_name"]')?.focus();
+            document.querySelector('#modal-add-student input[name="first_name"]')?.focus();
         }, 100);
     }
 });

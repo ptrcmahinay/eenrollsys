@@ -19,28 +19,39 @@ if (!student_is_irregular((int) $student['id'])) {
 
 $enrolledSubjects = fetch_all(
     'SELECT ss.id AS enrollment_id, ss.subject_id, ss.offering_id, ss.section_id, ss.curriculum_id, ss.units,
-            sub.subject_code, sub.subject_description, o.day_of_week, o.time_range, o.room,
+            sub.subject_code, sub.subject_description,
+            COALESCE(cs.day, o.day_of_week) AS day_of_week,
+            COALESCE(cs.time_range, o.time_range) AS time_range,
+            COALESCE(cs.room, o.room) AS room,
+            o.sched_code,
             sec.section_name, CONCAT(COALESCE(st.full_name, "TBA")) AS instructor_name
      FROM student_subjects ss
      INNER JOIN subjects sub ON sub.subject_id = ss.subject_id
      LEFT JOIN section_subject_offerings o ON o.id = ss.offering_id
+     LEFT JOIN class_schedules cs ON cs.schedule_code = o.sched_code
      LEFT JOIN sections sec ON sec.id = ss.section_id
-     LEFT JOIN staff st ON st.staff_id = o.instructor_id
+     LEFT JOIN staff st ON st.staff_id = COALESCE(cs.instructor_id, o.instructor_id)
      WHERE ss.student_id = :sid AND ss.term_id = :tid AND ss.enrollment_status = "enrolled"
      ORDER BY sub.subject_code',
     ['sid' => (int) $student['id'], 'tid' => (int) $currentTerm['id']]
 );
 
 $availableOfferings = fetch_all(
-    'SELECT o.id, o.section_id, o.curriculum_id, o.subject_id, sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units,
-            o.day_of_week, o.time_range, o.room, sec.section_name,
+    'SELECT o.id, o.section_id, o.curriculum_id, o.subject_id,
+            o.sched_code,
+            sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units,
+            COALESCE(cs.day, o.day_of_week) AS day_of_week,
+            COALESCE(cs.time_range, o.time_range) AS time_range,
+            COALESCE(cs.room, o.room) AS room,
+            sec.section_name,
             CONCAT(COALESCE(st.full_name, "TBA")) AS instructor_name,
             sec.max_slots,
             (SELECT COUNT(DISTINCT ss2.student_id) FROM student_subjects ss2 WHERE ss2.offering_id = o.id AND ss2.enrollment_status = "enrolled") AS enrolled_count
      FROM section_subject_offerings o
+     LEFT JOIN class_schedules cs ON cs.schedule_code = o.sched_code
      INNER JOIN subjects sub ON sub.subject_id = o.subject_id
      INNER JOIN sections sec ON sec.id = o.section_id
-     LEFT JOIN staff st ON st.staff_id = o.instructor_id
+     LEFT JOIN staff st ON st.staff_id = COALESCE(cs.instructor_id, o.instructor_id)
      WHERE o.term_id = :tid
      ORDER BY sub.subject_code',
     ['tid' => (int) $currentTerm['id']]
@@ -196,10 +207,11 @@ ob_start();
         <?php else: ?>
             <div class="table-wrap">
                 <table>
-                    <thead><tr><th>Code</th><th>Description</th><th>Units</th><th>Section</th><th>Schedule</th><th>Room</th><th>Instructor</th><th>Action</th></tr></thead>
+                    <thead><tr><th>Sched Code</th><th>Code</th><th>Description</th><th>Units</th><th>Section</th><th>Schedule</th><th>Room</th><th>Instructor</th><th>Action</th></tr></thead>
                     <tbody>
                     <?php foreach ($enrolledSubjects as $subj): ?>
                         <tr>
+                            <td><span class="badge" style="font-family:monospace;font-size:11px;"><?= h($subj['sched_code'] ?? '—') ?></span></td>
                             <td><?= h($subj['subject_code']) ?></td>
                             <td><?= h($subj['subject_description']) ?></td>
                             <td><?= h($subj['units']) ?></td>
@@ -224,7 +236,7 @@ ob_start();
                     </tbody>
                     <tfoot>
                         <tr>
-                            <td colspan="2" style="text-align:right;font-weight:700;">Total Units:</td>
+                            <td colspan="3" style="text-align:right;font-weight:700;">Total Units:</td>
                             <td style="font-weight:700;">
                                 <?php
                                 $totalUnits = 0;
@@ -255,7 +267,7 @@ ob_start();
         <?php else: ?>
             <div class="table-wrap">
                 <table>
-                    <thead><tr><th>Code</th><th>Description</th><th>Units</th><th>Section</th><th>Schedule</th><th>Room</th><th>Instructor</th><th>Slots</th><th>Action</th></tr></thead>
+                    <thead><tr><th>Sched Code</th><th>Code</th><th>Description</th><th>Units</th><th>Section</th><th>Schedule</th><th>Room</th><th>Instructor</th><th>Slots</th><th>Action</th></tr></thead>
                     <tbody>
                     <?php foreach ($availableOfferings as $off): ?>
                         <?php
@@ -264,6 +276,7 @@ ob_start();
                         $disabled = $hasActiveRequest || $isEnrolled || $isFull;
                         ?>
                         <tr>
+                            <td><span class="badge" style="font-family:monospace;font-size:11px;"><?= h($off['sched_code'] ?? '—') ?></span></td>
                             <td><?= h($off['subject_code']) ?></td>
                             <td><?= h($off['subject_description']) ?></td>
                             <td><?= h($off['units']) ?></td>

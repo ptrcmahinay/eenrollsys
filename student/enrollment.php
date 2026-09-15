@@ -87,6 +87,30 @@ if (is_post()) {
                 }
                 if ($sid) $seenSubjects[$sid] = true;
             }
+
+            // Schedule time conflict detection for irregular students
+            $candidateScheduleIds = [];
+            foreach ($offeringIds as $oid) {
+                $off = null;
+                foreach ($allowed as $a) { if ((int) $a['id'] === (int) $oid) { $off = $a; break; } }
+                if ($off === null) continue;
+                $sid = (int) $off['subject_id'];
+                $scheds = fetch_all(
+                    'SELECT cs.id FROM class_schedules cs
+                     WHERE cs.subject_id = :sid AND cs.section_id = :section_id
+                       AND cs.term_id = :term_id AND cs.status = "approved"
+                       AND cs.day IS NOT NULL AND cs.start_time IS NOT NULL AND cs.end_time IS NOT NULL',
+                    ['sid' => $sid, 'section_id' => $sectionId, 'term_id' => (int) $currentTerm['id']]
+                );
+                foreach ($scheds as $s) { $candidateScheduleIds[] = (int) $s['id']; }
+            }
+            if (count($candidateScheduleIds) > 1) {
+                $conflicts = find_student_schedule_conflicts($candidateScheduleIds);
+                if ($conflicts !== []) {
+                    foreach ($conflicts as $c) { flash('error', $c); }
+                    redirect('student/enrollment.php');
+                }
+            }
         }
         if ($sectionId <= 0 || $offeringIds === []) {
             flash('error', 'Select a section and at least one valid subject offering.');
@@ -98,11 +122,29 @@ if (is_post()) {
             ['student_id' => (int) $student['id'], 'term_id' => (int) $currentTerm['id']]
         );
         if ($draft !== null) {
+            log_audit((int) $draft['id'], 'draft_overwrite', 'student', 'draft', 'draft', 'Student overwrote previous draft');
             execute_sql('DELETE FROM enrollment_request_items WHERE request_id = :rid', ['rid' => (int) $draft['id']]);
             execute_sql('DELETE FROM enrollment_requests WHERE id = :id', ['id' => (int) $draft['id']]);
         }
 
         $requestId = create_enrollment_request_draft((int) $student['id'], (int) $currentTerm['id'], $sectionId, $requestedStatus, $offeringIds);
+
+        $draftScheduleBySubject = [];
+        foreach (get_class_schedules_for_section($sectionId, (int) $currentTerm['id']) as $ds) {
+            if (($ds['status'] ?? '') === 'approved') {
+                $draftScheduleBySubject[(int) $ds['subject_id']][] = $ds;
+            }
+        }
+        $draftItems = fetch_all(
+            'SELECT eri.id, o.subject_id FROM enrollment_request_items eri INNER JOIN section_subject_offerings o ON o.id = eri.offering_id WHERE eri.request_id = :rid',
+            ['rid' => $requestId]
+        );
+        foreach ($draftItems as $di) {
+            $scheds = $draftScheduleBySubject[(int) $di['subject_id']] ?? [];
+            if (!empty($scheds)) {
+                execute_sql('UPDATE enrollment_request_items SET schedule_id = :sid WHERE id = :id', ['sid' => (int) $scheds[0]['id'], 'id' => (int) $di['id']]);
+            }
+        }
         flash('success', 'Draft saved. You can review and submit later.');
         redirect('student/enrollment.php');
     }
@@ -127,6 +169,21 @@ if (is_post()) {
         if (empty($offeringIds)) {
             flash('error', 'No subjects in this draft.');
             redirect('student/enrollment.php');
+        }
+
+        // Re-check schedule conflicts before submitting
+        if (student_is_irregular((int) $student['id'])) {
+            $scheduleIds = [];
+            foreach ($items as $it) {
+                if (!empty($it['schedule_id'])) { $scheduleIds[] = (int) $it['schedule_id']; }
+            }
+            if (count($scheduleIds) > 1) {
+                $conflicts = find_student_schedule_conflicts($scheduleIds);
+                if ($conflicts !== []) {
+                    foreach ($conflicts as $c) { flash('error', $c); }
+                    redirect('student/enrollment.php');
+                }
+            }
         }
 
         execute_sql(
@@ -236,6 +293,25 @@ if (is_post()) {
         }
 
         create_enrollment_request((int) $student['id'], (int) $currentTerm['id'], $sectionId, $requestedStatus, $offeringIds);
+
+        $newRequestId = (int) db()->lastInsertId();
+        $postSchedules = get_class_schedules_for_section($sectionId, (int) $currentTerm['id']);
+        $postScheduleBySubject = [];
+        foreach ($postSchedules as $ps) {
+            if (($ps['status'] ?? '') === 'approved') {
+                $postScheduleBySubject[(int) $ps['subject_id']][] = $ps;
+            }
+        }
+        $newItems = fetch_all(
+            'SELECT eri.id, o.subject_id FROM enrollment_request_items eri INNER JOIN section_subject_offerings o ON o.id = eri.offering_id WHERE eri.request_id = :rid',
+            ['rid' => $newRequestId]
+        );
+        foreach ($newItems as $ni) {
+            $scheds = $postScheduleBySubject[(int) $ni['subject_id']] ?? [];
+            if (!empty($scheds)) {
+                execute_sql('UPDATE enrollment_request_items SET schedule_id = :sid WHERE id = :id', ['sid' => (int) $scheds[0]['id'], 'id' => (int) $ni['id']]);
+            }
+        }
         flash('success', 'Enrollment request submitted successfully.');
         redirect('student/enrollment.php');
     }
@@ -266,6 +342,13 @@ $slotsCapacity = $selectedSectionId > 0 ? section_capacity($selectedSectionId) :
 $slotsLeft     = max(0, $slotsCapacity - $slotsUsed);
 $regularPreview = $selectedSectionId > 0 ? regular_offerings_for_student((int) $student['id'], (int) $currentTerm['id'], $selectedSectionId) : [];
 $irregularSuggestions = irregular_offerings_for_student((int) $student['id'], (int) $currentTerm['id']);
+
+$approvedSchedules = $selectedSectionId > 0 ? get_class_schedules_for_section($selectedSectionId, (int) $currentTerm['id']) : [];
+$scheduleBySubject = [];
+foreach ($approvedSchedules as $s) {
+    if (($s['status'] ?? '') !== 'approved') continue;
+    $scheduleBySubject[(int) $s['subject_id']][] = $s;
+}
 
 $resubmitOfferingIds = [];
 if ($resubmitSource) {
@@ -471,13 +554,19 @@ ob_start();
             <div id="regularPanel">
                 <div class="table-wrap">
                     <table>
-                        <thead><tr><th>Code</th><th>Description</th><th>Lec</th><th>Lab</th><th>Units</th><th>Prerequisite Check</th></tr></thead>
+                        <thead><tr><th>Sched Code</th><th>Code</th><th>Description</th><th>Day</th><th>Time</th><th>Room</th><th>Instructor</th><th>Lec</th><th>Lab</th><th>Units</th><th>Prerequisite Check</th></tr></thead>
                         <tbody id="regularTableBody">
                         <?php foreach ($regularPreview as $row): ?>
                             <?php $eligibility = prerequisite_status_for_curriculum((int) $student['id'], $row); ?>
+                            <?php $rowSchedules = $scheduleBySubject[(int) $row['subject_id']] ?? []; ?>
                             <tr data-lab-credits="<?= h((string) ($row['lab_credit'] ?? 0)) ?>">
+                                <td><span class="badge" style="font-family:monospace;font-size:11px;"><?= h($row['sched_code'] ?? '—') ?></span></td>
                                 <td><?= h($row['subject_code']) ?></td>
                                 <td><?= h($row['subject_description']) ?></td>
+                                <td><?= h(!empty($rowSchedules) ? $rowSchedules[0]['day'] ?? '—' : '—') ?></td>
+                                <td><?= h(!empty($rowSchedules) ? format_time_range((string) ($rowSchedules[0]['start_time'] ?? ''), (string) ($rowSchedules[0]['end_time'] ?? '')) : '—') ?></td>
+                                <td><?= h(!empty($rowSchedules) ? $rowSchedules[0]['room'] ?? '—' : '—') ?></td>
+                                <td><?= h(!empty($rowSchedules) ? $rowSchedules[0]['instructor_name'] ?? 'TBA' : 'TBA') ?></td>
                                 <td style="text-align:center"><?= h($row['lec_credit'] ?? '0') ?></td>
                                 <td style="text-align:center"><?= h($row['lab_credit'] ?? '0') ?></td>
                                 <td style="text-align:center" class="reg-unit"><?= h($row['units']) ?></td>
@@ -487,7 +576,7 @@ ob_start();
                         </tbody>
                         <tfoot>
                             <tr>
-                                <td colspan="4" style="text-align:right;font-weight:700;">Total Units:</td>
+                                <td colspan="9" style="text-align:right;font-weight:700;">Total Units:</td>
                                 <td id="regularTotalUnits" style="text-align:center;font-weight:700;">
                                     <?php
                                     $regTotal = 0;
@@ -509,23 +598,30 @@ ob_start();
                     <span class="badge info" id="unitCounter">0 units selected / 27 max</span>
                     <span class="badge" id="subjectCounter">0 subjects selected</span>
                 </div>
+                <div id="scheduleConflictBox" style="display:none;padding:10px 14px;margin-bottom:10px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;color:#92400e;font-size:13px;"></div>
                 <div class="table-wrap">
                     <table>
-                        <thead><tr><th>Select</th><th>Section</th><th>Code</th><th>Description</th><th>Lec</th><th>Lab</th><th>Units</th><th>Eligibility</th></tr></thead>
+                        <thead><tr><th>Select</th><th>Sched Code</th><th>Section</th><th>Code</th><th>Description</th><th>Day</th><th>Time</th><th>Room</th><th>Instructor</th><th>Lec</th><th>Lab</th><th>Units</th><th>Eligibility</th></tr></thead>
                         <tbody>
                         <?php foreach ($irregularSuggestions as $row): ?>
                             <?php $checked = isset($resubmitOfferingIds[(int) $row['id']]) ? 'checked' : ''; ?>
+                            <?php $rowSchedules = $scheduleBySubject[(int) $row['subject_id']] ?? []; ?>
                             <tr>
                                 <td>
                                     <?php if ($row['eligible']): ?>
-                                        <input type="checkbox" name="offering_ids[]" value="<?= h($row['id']) ?>" class="irr-check" data-subject-id="<?= h($row['subject_id']) ?>" data-units="<?= h($row['units']) ?>" data-lab-credits="<?= h((string) ($row['lab_credit'] ?? 0)) ?>" <?= $checked ?>>
+                                        <input type="checkbox" name="offering_ids[]" value="<?= h($row['id']) ?>" class="irr-check" data-subject-id="<?= h($row['subject_id']) ?>" data-units="<?= h($row['units']) ?>" data-lab-credits="<?= h((string) ($row['lab_credit'] ?? 0)) ?>" data-schedule-day="<?= h(!empty($rowSchedules) ? $rowSchedules[0]['day'] ?? '' : '') ?>" data-schedule-start="<?= h(!empty($rowSchedules) ? $rowSchedules[0]['start_time'] ?? '' : '') ?>" data-schedule-end="<?= h(!empty($rowSchedules) ? $rowSchedules[0]['end_time'] ?? '' : '') ?>" data-schedule-code="<?= h($row['sched_code'] ?? '') ?>" <?= $checked ?>>
                                     <?php else: ?>
                                         <span class="helper">Blocked</span>
                                     <?php endif; ?>
                                 </td>
+                                <td><span class="badge" style="font-family:monospace;font-size:11px;"><?= h($row['sched_code'] ?? '—') ?></span></td>
                                 <td><?= h($row['year_level'] . '-' . $row['section_name']) ?></td>
                                 <td><?= h($row['subject_code']) ?></td>
                                 <td><?= h($row['subject_description']) ?></td>
+                                <td><?= h(!empty($rowSchedules) ? $rowSchedules[0]['day'] ?? '—' : '—') ?></td>
+                                <td><?= h(!empty($rowSchedules) ? format_time_range((string) ($rowSchedules[0]['start_time'] ?? ''), (string) ($rowSchedules[0]['end_time'] ?? '')) : '—') ?></td>
+                                <td><?= h(!empty($rowSchedules) ? $rowSchedules[0]['room'] ?? '—' : '—') ?></td>
+                                <td><?= h(!empty($rowSchedules) ? $rowSchedules[0]['instructor_name'] ?? 'TBA' : 'TBA') ?></td>
                                 <td style="text-align:center"><?= h($row['lec_credit'] ?? '0') ?></td>
                                 <td style="text-align:center"><?= h($row['lab_credit'] ?? '0') ?></td>
                                 <td style="text-align:center" class="irr-unit"><?= h($row['units']) ?></td>
@@ -588,11 +684,11 @@ ob_start();
                 <h4>Subjects to be Enrolled</h4>
                 <div class="table-wrap">
                     <table>
-                        <thead><tr><th>Code</th><th>Description</th><th>Lec</th><th>Lab</th><th>Units</th></tr></thead>
+                        <thead><tr><th>Sched Code</th><th>Code</th><th>Description</th><th>Day</th><th>Time</th><th>Room</th><th>Instructor</th><th>Lec</th><th>Lab</th><th>Units</th></tr></thead>
                         <tbody id="reviewSubjects"></tbody>
                         <tfoot>
                             <tr>
-                                <td colspan="3" style="text-align:right;font-weight:700;">Total Units:</td>
+                                <td colspan="8" style="text-align:right;font-weight:700;">Total:</td>
                                 <td id="reviewLabTotal" style="text-align:center;font-weight:700;"><?= h((string) $initialLabCredits) ?></td>
                                 <td id="reviewUnitsTotal" style="text-align:center;font-weight:700;"><?= h((string) $initialTotalUnits) ?></td>
                             </tr>
@@ -742,11 +838,11 @@ function updateReview() {
         subjectCount = rows.length;
         rows.forEach(function(r) {
             var cells = r.querySelectorAll('td');
-            var units = parseFloat(cells[4].textContent) || 0;
-            var lab = parseFloat(cells[3].textContent) || 0;
+            var units = parseFloat(cells[9].textContent) || 0;
+            var lab = parseFloat(cells[8].textContent) || 0;
             totalUnits += units;
             totalLabCredits += lab;
-            reviewBody.innerHTML += '<tr><td>' + cells[0].textContent + '</td><td>' + cells[1].textContent + '</td><td style=\"text-align:center\">' + cells[2].textContent + '</td><td style=\"text-align:center\">' + lab + '</td><td style=\"text-align:center\">' + units + '</td></tr>';
+            reviewBody.innerHTML += '<tr><td style=\"font-family:monospace;font-size:11px;\">' + cells[0].textContent + '</td><td>' + cells[1].textContent + '</td><td>' + cells[2].textContent + '</td><td>' + cells[3].textContent + '</td><td>' + cells[4].textContent + '</td><td>' + cells[5].textContent + '</td><td>' + cells[6].textContent + '</td><td style=\"text-align:center\">' + cells[7].textContent + '</td><td style=\"text-align:center\">' + lab + '</td><td style=\"text-align:center\">' + units + '</td></tr>';
         });
     } else {
         var checks = document.querySelectorAll('.irr-check:checked');
@@ -758,7 +854,7 @@ function updateReview() {
             var lab = parseFloat(c.getAttribute('data-lab-credits')) || 0;
             totalUnits += units;
             totalLabCredits += lab;
-            reviewBody.innerHTML += '<tr><td>' + cells[2].textContent + '</td><td>' + cells[3].textContent + '</td><td style=\"text-align:center\">' + cells[4].textContent + '</td><td style=\"text-align:center\">' + lab + '</td><td style=\"text-align:center\">' + units + '</td></tr>';
+            reviewBody.innerHTML += '<tr><td style=\"font-family:monospace;font-size:11px;\">' + cells[1].textContent + '</td><td>' + cells[3].textContent + '</td><td>' + cells[4].textContent + '</td><td>' + cells[5].textContent + '</td><td>' + cells[6].textContent + '</td><td>' + cells[7].textContent + '</td><td>' + cells[8].textContent + '</td><td style=\"text-align:center\">' + cells[9].textContent + '</td><td style=\"text-align:center\">' + lab + '</td><td style=\"text-align:center\">' + units + '</td></tr>';
         });
     }
 
@@ -796,6 +892,14 @@ function updateReview() {
 
 function showConfirmModal() { document.getElementById('confirm-modal').style.display = 'flex'; }
 function hideConfirmModal() { document.getElementById('confirm-modal').style.display = 'none'; }
+
+function timeToMin(t) {
+    if (!t) return 0;
+    var parts = t.split(':');
+    var h = parseInt(parts[0]) || 0;
+    var m = parseInt(parts[1]) || 0;
+    return h * 60 + m;
+}
 
 function saveDraft() {
     var secSel = document.getElementById('sectionSelect');
@@ -848,6 +952,34 @@ document.addEventListener('DOMContentLoaded', function() {
         if (units > 27) { counter.className = 'badge danger'; }
         else if (units > 20) { counter.className = 'badge warning'; }
         else { counter.className = 'badge info'; }
+
+        // Schedule conflict detection
+        var conflictBox = document.getElementById('scheduleConflictBox');
+        var conflicts = [];
+        var checked = Array.prototype.slice.call(checks);
+        for (var i = 0; i < checked.length; i++) {
+            for (var j = i + 1; j < checked.length; j++) {
+                var a = checked[i], b = checked[j];
+                var aDay = a.getAttribute('data-schedule-day');
+                var bDay = b.getAttribute('data-schedule-day');
+                if (!aDay || !bDay || aDay !== bDay) continue;
+                var aStart = timeToMin(a.getAttribute('data-schedule-start'));
+                var aEnd = timeToMin(a.getAttribute('data-schedule-end'));
+                var bStart = timeToMin(b.getAttribute('data-schedule-start'));
+                var bEnd = timeToMin(b.getAttribute('data-schedule-end'));
+                if (aStart < bEnd && bStart < aEnd) {
+                    conflicts.push(a.getAttribute('data-schedule-code') + ' and ' + b.getAttribute('data-schedule-code') + ' overlap on ' + aDay);
+                }
+            }
+        }
+        if (conflictBox) {
+            if (conflicts.length > 0) {
+                conflictBox.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">warning</span> <strong>Schedule Conflicts:</strong> ' + conflicts.join('; ');
+                conflictBox.style.display = 'block';
+            } else {
+                conflictBox.style.display = 'none';
+            }
+        }
 
         // Re-enable all checkboxes first, then disable same-subject duplicates
         document.querySelectorAll('.irr-check').forEach(function(c) {

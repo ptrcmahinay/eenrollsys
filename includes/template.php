@@ -47,8 +47,10 @@ $sidebarCollapsed = ($_COOKIE['sidebar'] ?? 'expanded') === 'collapsed';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= h($pageTitle ?? 'Portal') ?> — <?= h(page_title_suffix()) ?></title>
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="<?= h(app_url('includes/tailwind.min.css')) ?>">
     <link rel="stylesheet" href="<?= h(app_url('includes/style.css')) ?>">
     <style>tr[data-href]{cursor:pointer;}tr[data-href]:hover{background:#f8fafc;}</style>
     <script>
@@ -367,5 +369,8 @@ document.addEventListener("click", (e) => {
 <?php endif; ?>
 
 <script src="<?= h(app_url('includes/datatable.js')) ?>" defer></script>
+<?php if (!empty($extra_js)): ?>
+<?= $extra_js ?>
+<?php endif; ?>
 </body>
 </html>

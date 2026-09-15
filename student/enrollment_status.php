@@ -105,10 +105,11 @@ ob_start();
             </div>
             <div class="table-wrap">
                 <table>
-                    <thead><tr><th>Code</th><th>Description</th><th>Units</th><th>Section</th></tr></thead>
+                    <thead><tr><th>Sched Code</th><th>Code</th><th>Description</th><th>Units</th><th>Section</th></tr></thead>
                     <tbody>
                     <?php foreach ($items as $item): ?>
                         <tr>
+                            <td><span class="badge" style="font-family:monospace;"><?= h($item['sched_code'] ?? '—') ?></span></td>
                             <td><?= h($item['subject_code']) ?></td>
                             <td><?= h($item['subject_description']) ?></td>
                             <td><?= h($item['units']) ?></td>

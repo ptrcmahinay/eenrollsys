@@ -6,7 +6,7 @@ require_role(['admin', 'registrar']);
 
 $studentId = (int) ($_GET['student_id'] ?? $_POST['student_id'] ?? 0);
 $student = fetch_one(
-    'SELECT s.*, p.program_code, p.program_name, sec.section_name
+    'SELECT s.*, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, p.program_code, p.program_name, sec.section_name
      FROM students s
      INNER JOIN programs p ON p.programs_id = s.program_id
      LEFT JOIN sections sec ON sec.id = s.section_id
@@ -41,9 +41,10 @@ $requests = fetch_all(
 
 $gradeRows = fetch_all(
     'SELECT ss.id AS student_subject_id, ss.final_grade, ss.units, sub.subject_code, sub.subject_description,
-            ay.year_label, t.semester
+            o.sched_code, ay.year_label, t.semester
      FROM student_subjects ss
      INNER JOIN subjects sub ON sub.subject_id = ss.subject_id
+     LEFT JOIN section_subject_offerings o ON o.id = ss.offering_id
      INNER JOIN academic_terms t ON t.id = ss.term_id
      INNER JOIN academic_years ay ON ay.id = t.academic_year_id
      WHERE ss.student_id = :student_id
@@ -123,12 +124,13 @@ ob_start();
     <p class="helper">The registrar can view and edit student grades here. Updates also sync to the grades table for the COG and checklist.</p>
     <div class="table-wrap">
         <table>
-            <thead><tr><th>Academic Year</th><th>Semester</th><th>Code</th><th>Description</th><th>Units</th><th>Final Grade</th><th>Save</th></tr></thead>
+            <thead><tr><th>Academic Year</th><th>Semester</th><th>Sched Code</th><th>Code</th><th>Description</th><th>Units</th><th>Final Grade</th><th>Save</th></tr></thead>
             <tbody>
             <?php foreach ($gradeRows as $row): ?>
                 <tr>
                     <td><?= h($row['year_label']) ?></td>
                     <td><?= h(semester_label((string) $row['semester'])) ?></td>
+                    <td><span class="badge" style="font-family:monospace;"><?= h($row['sched_code'] ?? '—') ?></span></td>
                     <td><?= h($row['subject_code']) ?></td>
                     <td><?= h($row['subject_description']) ?></td>
                     <td><?= h($row['units']) ?></td>

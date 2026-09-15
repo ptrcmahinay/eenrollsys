@@ -5,6 +5,11 @@ require_once __DIR__ . '/../includes/app.php';
 
 $user = require_login();
 $role = $user['role'];
+$allRoles = $user['roles'] ?? [];
+
+if (in_array('instructor', $allRoles, true) && in_array('adviser', $allRoles, true)) {
+    redirect('instructor/dashboard.php');
+}
 
 $map = [
     'admin' => 'admin/dashboard.php',

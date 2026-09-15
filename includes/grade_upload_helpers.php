@@ -5,7 +5,7 @@ require_once __DIR__ . '/app.php';
 
 function grade_template_headers(): array
 {
-    return ['student_number', 'student_name', 'subject_code', 'final_grade'];
+    return ['student_number', 'student_name', 'subject_code', 'sched_code', 'final_grade'];
 }
 
 function output_grade_template_csv(array $rows = []): never

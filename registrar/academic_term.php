@@ -19,18 +19,33 @@ if (is_post()) {
     }
 
     if ($action === 'create_term') {
+        $academicYearId = (int) ($_POST['academic_year_id'] ?? 0);
         execute_sql(
             'INSERT INTO academic_terms (academic_year_id, semester, is_active, enrollment_open, start_date, end_date, created_at, updated_at)
              VALUES (:academic_year_id, :semester, 0, :enrollment_open, :start_date, :end_date, NOW(), NOW())',
             [
-                'academic_year_id' => (int) ($_POST['academic_year_id'] ?? 0),
+                'academic_year_id' => $academicYearId,
                 'semester' => trim($_POST['semester'] ?? '1'),
                 'enrollment_open' => isset($_POST['enrollment_open']) ? 1 : 0,
                 'start_date' => $_POST['start_date'] ?? null,
                 'end_date' => $_POST['end_date'] ?? null,
             ]
         );
-        flash('success', 'Academic term created.');
+        $newTermId = (int) db()->lastInsertId();
+
+        $allSections = fetch_all('SELECT id FROM sections WHERE status = "active"');
+        $offeringCount = 0;
+        foreach ($allSections as $sec) {
+            $offeringCount += auto_generate_offerings_for_section((int) $sec['id'], $newTermId);
+        }
+
+        // Reset instructor assignments for new term (new offerings start with NULL instructor)
+        // This ensures no carryover from previous term
+        reset_instructor_assignments_for_term($newTermId);
+
+        $msg = 'Academic term created. Instructor assignments have been reset for the new term.';
+        if ($offeringCount > 0) $msg .= " Generated $offeringCount offering(s).";
+        flash('success', $msg);
     }
 
     if ($action === 'activate_term') {
@@ -45,7 +60,26 @@ if (is_post()) {
                 execute_sql('UPDATE academic_years SET is_active = 1 WHERE id = :id', ['id' => (int) $yearId['academic_year_id']]);
             }
             db()->commit();
-            flash('success', 'Active term updated.');
+
+            $allSections = fetch_all('SELECT id FROM sections WHERE status = "active"');
+            $offeringCount = 0;
+            foreach ($allSections as $sec) {
+                $offeringCount += auto_generate_offerings_for_section((int) $sec['id'], $termId);
+            }
+
+            $programs = fetch_all('SELECT programs_id FROM programs WHERE status = "active"');
+            $generated = 0;
+            foreach ($programs as $p) {
+                $result = generate_all_sched_codes_for_term_program($termId, (int) $p['programs_id']);
+                if ($result['success']) {
+                    preg_match('/(\d+)/', $result['message'], $m);
+                    $generated += (int) ($m[1] ?? 0);
+                }
+            }
+            $msg = 'Active term updated.';
+            if ($offeringCount > 0) $msg .= " Generated $offeringCount offering(s).";
+            if ($generated > 0) $msg .= " Generated $generated schedule code(s).";
+            flash('success', $msg);
         } catch (Throwable $throwable) {
             db()->rollBack();
             throw $throwable;

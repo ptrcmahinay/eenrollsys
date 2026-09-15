@@ -24,7 +24,7 @@ if (is_post() && ($_POST['action'] ?? '') === 'bulk_delete_students') {
     $ids = $_POST['student_id'] ?? [];
     if (is_array($ids) && count($ids) > 0) {
         $ph = implode(',', array_fill(0, count($ids), '?'));
-        execute_sql("UPDATE students SET status = 'inactive' WHERE id IN ({$ph})", $ids);
+        execute_sql("UPDATE students SET record_status = 'Inactive' WHERE id IN ({$ph})", $ids);
         flash('success', count($ids) . ' student(s) deleted.');
     }
     redirect('admin/students.php');
@@ -38,7 +38,7 @@ $sections = fetch_all(
      ORDER BY p.program_code, sec.year_level, sec.section_name'
 );
 $students = fetch_all(
-    'SELECT s.*, p.program_code, sec.section_name,
+    'SELECT s.*, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, p.program_code, sec.section_name,
             CASE WHEN u.users_id IS NULL THEN "No account" ELSE "Has account" END AS account_status
      FROM students s
      INNER JOIN programs p ON p.programs_id = s.program_id
@@ -117,8 +117,8 @@ ob_start();
                             <td><?= h($student['account_status']) ?></td>
                         <?php endif; ?>
                         <td>
-                            <span class="badge <?= $student['status'] === 'active' ? 'success' : 'danger' ?>">
-                                <?= h(ucfirst((string) ($student['status'] ?? 'active'))) ?>
+                            <span class="badge <?= ($student['record_status'] ?? 'Active') === 'Active' ? 'success' : 'danger' ?>">
+                                <?= h($student['record_status'] ?? 'Active') ?>
                             </span>
                         </td>
                         <td data-dt-value="<?= h($student['enrollment_status']) ?>">

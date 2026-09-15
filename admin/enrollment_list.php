@@ -7,7 +7,7 @@ require_role(['admin', 'registrar']);
 /* ── CSV Export ── */
 if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     // Reuse same filters as main query — just build the full result set
-    $eSql = 'SELECT s.student_number, s.full_name, s.year_level, p.program_code, sec.section_name,
+    $eSql = 'SELECT s.student_number, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, s.year_level, p.program_code, sec.section_name,
                     ay.year_label, t.semester, er.requested_status, er.workflow_status,
                     er.total_units, er.total_amount, er.ra10931_status, er.created_at
              FROM enrollment_requests er
@@ -23,8 +23,8 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     $eSearch = trim($_GET['q'] ?? '');
     if ($eTerm > 0)      { $eSql .= ' AND er.term_id = :tid';      $eParams['tid'] = $eTerm; }
     if ($eStatus !== '') { $eSql .= ' AND er.workflow_status = :ws'; $eParams['ws'] = $eStatus; }
-    if ($eSearch !== '') { $eSql .= ' AND (s.full_name LIKE :q OR s.student_number LIKE :q2)'; $eParams['q'] = '%'.$eSearch.'%'; $eParams['q2'] = '%'.$eSearch.'%'; }
-    $eSql .= ' ORDER BY s.full_name';
+    if ($eSearch !== '') { $eSql .= ' AND (CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) LIKE :q OR s.student_number LIKE :q2)'; $eParams['q'] = '%'.$eSearch.'%'; $eParams['q2'] = '%'.$eSearch.'%'; }
+    $eSql .= ' ORDER BY s.last_name, s.first_name';
     $eRows = fetch_all($eSql, $eParams);
 
     header('Content-Type: text/csv');
@@ -60,7 +60,7 @@ $sql = 'SELECT er.id AS request_id,
                er.total_amount, er.ra10931_status,
                er.adviser_remark, er.chair_remark, er.registrar_remark,
                er.created_at AS submitted_at, er.updated_at,
-               s.id AS student_id, s.student_number, s.full_name, s.year_level,
+               s.id AS student_id, s.student_number, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, s.year_level,
                p.program_code, p.program_name,
                sec.section_name,
                ay.year_label, t.semester
@@ -86,7 +86,7 @@ if ($filterProgram > 0) {
     $params['prog'] = $filterProgram;
 }
 if ($search !== '') {
-    $sql .= ' AND (s.full_name LIKE :q OR s.student_number LIKE :q2)';
+    $sql .= ' AND (CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) LIKE :q OR s.student_number LIKE :q2)';
     $params['q']  = '%' . $search . '%';
     $params['q2'] = '%' . $search . '%';
 }

@@ -14,7 +14,7 @@ $counts = [
 
 $queue = fetch_all(
     'SELECT er.id, er.workflow_status, er.total_units, er.total_amount, er.ra10931_status,
-            s.student_number, s.full_name, p.program_code, sec.section_name
+            s.student_number, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, p.program_code, sec.section_name
      FROM enrollment_requests er
      INNER JOIN students s ON s.id = er.student_id
      INNER JOIN programs p ON p.programs_id = s.program_id

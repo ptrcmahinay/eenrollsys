@@ -1,8 +1,10 @@
 <?php
 
-function render_modal(string $id, string $title, string $body, bool $wide = false): string
+function render_modal(string $id, string $title, string $body, bool $wide = false, bool $extra_wide = false): string
 {
-    $boxClass = 'modal-box' . ($wide ? ' wide' : '');
+    $boxClass = 'modal-box';
+    if ($extra_wide) $boxClass .= ' extra-wide';
+    elseif ($wide) $boxClass .= ' wide';
     return "
     <div id='$id' class='modal'>
         <div class='$boxClass'>

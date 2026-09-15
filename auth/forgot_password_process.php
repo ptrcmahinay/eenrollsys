@@ -13,7 +13,7 @@ if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
     redirect('auth/forgot_password.php');
 }
 
-$user = fetch_one('SELECT u.users_id, COALESCE(s.full_name, u.username, u.email) AS display_name, u.email FROM users u LEFT JOIN students s ON s.id = u.student_id WHERE u.email = :email LIMIT 1', ['email' => $email]);
+$user = fetch_one('SELECT u.users_id, COALESCE(CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name), u.username, u.email) AS display_name, u.email FROM users u LEFT JOIN students s ON s.id = u.student_id WHERE u.email = :email LIMIT 1', ['email' => $email]);
 if ($user === null) {
     flash('info', 'If that email is registered, you will receive a reset link shortly.');
     redirect('auth/forgot_password.php');

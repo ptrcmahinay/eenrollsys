@@ -103,17 +103,23 @@ if (is_post()) {
         $labCredit = (float) ($_POST['lab_credit'] ?? 0);
         $lecHours  = (float) ($_POST['lec_hours'] ?? 0);
         $labHours  = (float) ($_POST['lab_hours'] ?? 0);
+        $teachDept = (int) ($_POST['teaching_department_id'] ?? 0);
         if ($code !== '' && $desc !== '') {
-            $exists = fetch_one('SELECT subject_id FROM subjects WHERE subject_code = :code', ['code' => $code]);
-            if ($exists) {
+            $dupCode = fetch_one('SELECT subject_id FROM subjects WHERE subject_code = :code', ['code' => $code]);
+            if ($dupCode) {
                 flash('error', "Subject code \"$code\" already exists.");
             } else {
-                execute_sql(
-                    'INSERT INTO subjects (subject_code, subject_description, lec_credit, lab_credit, lec_hours, lab_hours, created_at)
-                     VALUES (:code, :desc, :lc, :lb, :lh, :lbh, NOW())',
-                    ['code' => $code, 'desc' => $desc, 'lc' => $lecCredit, 'lb' => $labCredit, 'lh' => $lecHours, 'lbh' => $labHours]
-                );
-                flash('success', 'Subject created.');
+                $dupDesc = fetch_one('SELECT subject_id FROM subjects WHERE subject_description = :desc', ['desc' => $desc]);
+                if ($dupDesc) {
+                    flash('error', "Subject description \"$desc\" already exists.");
+                } else {
+                    execute_sql(
+                        'INSERT INTO subjects (subject_code, subject_description, lec_credit, lab_credit, lec_hours, lab_hours, teaching_department_id, created_at)
+                         VALUES (:code, :desc, :lc, :lb, :lh, :lbh, :td, NOW())',
+                        ['code' => $code, 'desc' => $desc, 'lc' => $lecCredit, 'lb' => $labCredit, 'lh' => $lecHours, 'lbh' => $labHours, 'td' => $teachDept > 0 ? $teachDept : null]
+                    );
+                    flash('success', 'Subject created.');
+                }
             }
         }
     }
@@ -131,8 +137,10 @@ if (is_post()) {
             $code = trim($codes[$i] ?? '');
             $desc = trim($descs[$i] ?? '');
             if ($code === '' || $desc === '') { $skipped++; continue; }
-            $exists = fetch_one('SELECT subject_id FROM subjects WHERE subject_code = :code', ['code' => $code]);
-            if ($exists) { $skipped++; continue; }
+            $dupCode = fetch_one('SELECT subject_id FROM subjects WHERE subject_code = :code', ['code' => $code]);
+            if ($dupCode) { $skipped++; continue; }
+            $dupDesc = fetch_one('SELECT subject_id FROM subjects WHERE subject_description = :desc', ['desc' => $desc]);
+            if ($dupDesc) { $skipped++; continue; }
             execute_sql(
                 'INSERT INTO subjects (subject_code, subject_description, lec_credit, lab_credit, lec_hours, lab_hours, created_at)
                  VALUES (:code, :desc, :lc, :lb, :lh, :lbh, NOW())',
@@ -155,12 +163,14 @@ if (is_post()) {
         $labCredit = (float) ($_POST['lab_credit'] ?? 0);
         $lecHours  = (float) ($_POST['lec_hours'] ?? 0);
         $labHours  = (float) ($_POST['lab_hours'] ?? 0);
+        $teachDept = (int) ($_POST['teaching_department_id'] ?? 0);
         if ($sid > 0 && $code !== '' && $desc !== '') {
             execute_sql(
                 'UPDATE subjects SET subject_code = :code, subject_description = :desc,
-                 lec_credit = :lc, lab_credit = :lb, lec_hours = :lh, lab_hours = :lbh
+                 lec_credit = :lc, lab_credit = :lb, lec_hours = :lh, lab_hours = :lbh,
+                 teaching_department_id = :td
                  WHERE subject_id = :id',
-                ['code' => $code, 'desc' => $desc, 'lc' => $lecCredit, 'lb' => $labCredit, 'lh' => $lecHours, 'lbh' => $labHours, 'id' => $sid]
+                ['code' => $code, 'desc' => $desc, 'lc' => $lecCredit, 'lb' => $labCredit, 'lh' => $lecHours, 'lbh' => $labHours, 'td' => $teachDept > 0 ? $teachDept : null, 'id' => $sid]
             );
             flash('success', 'Subject updated.');
         }
@@ -180,6 +190,7 @@ if (is_post()) {
         $labCredits = $_POST['lab_credit'] ?? [];
         $lecHours   = $_POST['lec_hours']   ?? [];
         $labHours   = $_POST['lab_hours']   ?? [];
+        $teachDepts = $_POST['teaching_department_id'] ?? [];
         $updated = 0;
         foreach ($subjectIds as $sid) {
             $sid = (int) $sid;
@@ -188,9 +199,10 @@ if (is_post()) {
             $lb = (float) ($labCredits[$sid] ?? 0);
             $lh = (float) ($lecHours[$sid]   ?? 0);
             $lbh = (float) ($labHours[$sid]  ?? 0);
+            $td = (int) ($teachDepts[$sid] ?? 0);
             execute_sql(
-                'UPDATE subjects SET lec_credit = :lc, lab_credit = :lb, lec_hours = :lh, lab_hours = :lbh WHERE subject_id = :id',
-                ['lc' => $lc, 'lb' => $lb, 'lh' => $lh, 'lbh' => $lbh, 'id' => $sid]
+                'UPDATE subjects SET lec_credit = :lc, lab_credit = :lb, lec_hours = :lh, lab_hours = :lbh, teaching_department_id = :td WHERE subject_id = :id',
+                ['lc' => $lc, 'lb' => $lb, 'lh' => $lh, 'lbh' => $lbh, 'td' => $td > 0 ? $td : null, 'id' => $sid]
             );
             $updated++;
         }
@@ -201,38 +213,46 @@ if (is_post()) {
     /* ── Curriculum CRUD ── */
     if ($action === 'add_curriculum') {
         $progId = (int) ($_POST['program_id'] ?? 0);
-        $subjId = (int) ($_POST['subject_id'] ?? 0);
-        $year   = trim($_POST['year_level'] ?? '1');
-        $sem    = trim($_POST['semester'] ?? '1st');
         $label  = trim($_POST['curriculum_label'] ?? '2024');
-        $prereq1 = ($_POST['prerequisite_subject_id'] ?? '') !== '' ? (int) $_POST['prerequisite_subject_id'] : null;
-        $prereq2 = ($_POST['prerequisite_subject_2_id'] ?? '') !== '' ? (int) $_POST['prerequisite_subject_2_id'] : null;
-        $prereq3 = ($_POST['prerequisite_subject_3_id'] ?? '') !== '' ? (int) $_POST['prerequisite_subject_3_id'] : null;
-        $standing = trim($_POST['standing'] ?? '');
-
-        if ($progId > 0 && $subjId > 0) {
+        $subjIds    = $_POST['subject_id'] ?? [];
+        $years      = $_POST['year_level'] ?? [];
+        $sems       = $_POST['semester'] ?? [];
+        $stands     = $_POST['standing'] ?? [];
+        $prereq1s   = $_POST['prerequisite_subject_id'] ?? [];
+        $prereq2s   = $_POST['prerequisite_subject_2_id'] ?? [];
+        $prereq3s   = $_POST['prerequisite_subject_3_id'] ?? [];
+        $added = 0; $skipped = 0;
+        $count = count($subjIds);
+        for ($i = 0; $i < $count; $i++) {
+            $sid = (int) ($subjIds[$i] ?? 0);
+            if ($progId <= 0 || $sid <= 0) { $skipped++; continue; }
+            $year   = trim($years[$i] ?? '1');
+            $sem    = trim($sems[$i] ?? '1st');
+            $standing = trim($stands[$i] ?? '');
+            $p1 = ($prereq1s[$i] ?? '') !== '' ? (int) $prereq1s[$i] : null;
+            $p2 = ($prereq2s[$i] ?? '') !== '' ? (int) $prereq2s[$i] : null;
+            $p3 = ($prereq3s[$i] ?? '') !== '' ? (int) $prereq3s[$i] : null;
             $dup = fetch_one(
                 'SELECT curriculum_id FROM program_curriculum WHERE program_id = :pid AND subject_id = :sid AND year_level = :yl AND semester = :sem AND curriculum_label = :label',
-                ['pid' => $progId, 'sid' => $subjId, 'yl' => $year, 'sem' => $sem, 'label' => $label]
+                ['pid' => $progId, 'sid' => $sid, 'yl' => $year, 'sem' => $sem, 'label' => $label]
             );
-            if ($dup !== null) {
-                flash('error', 'This subject is already in the curriculum for Year ' . h($year) . ' ' . h($sem) . '.');
-            } else {
-                execute_sql(
-                    'INSERT INTO program_curriculum
-                        (program_id, subject_id, year_level, semester, prerequisite_subject_id,
-                         prerequisite_subject_2_id, prerequisite_subject_3_id, standing, curriculum_label, created_at)
-                     VALUES (:pid, :sid, :yl, :sem, :p1, :p2, :p3, :st, :label, NOW())',
-                    [
-                        'pid' => $progId, 'sid' => $subjId, 'yl' => $year, 'sem' => $sem,
-                        'p1' => $prereq1, 'p2' => $prereq2, 'p3' => $prereq3,
-                        'st' => $standing !== '' ? $standing : null,
-                        'label' => $label,
-                    ]
-                );
-                flash('success', 'Curriculum line added.');
-            }
+            if ($dup !== null) { $skipped++; continue; }
+            execute_sql(
+                'INSERT INTO program_curriculum
+                    (program_id, subject_id, year_level, semester, prerequisite_subject_id,
+                     prerequisite_subject_2_id, prerequisite_subject_3_id, standing, curriculum_label, created_at)
+                 VALUES (:pid, :sid, :yl, :sem, :p1, :p2, :p3, :st, :label, NOW())',
+                [
+                    'pid' => $progId, 'sid' => $sid, 'yl' => $year, 'sem' => $sem,
+                    'p1' => $p1, 'p2' => $p2, 'p3' => $p3,
+                    'st' => $standing !== '' ? $standing : null,
+                    'label' => $label,
+                ]
+            );
+            $added++;
         }
+        if ($added > 0) flash('success', "$added curriculum line(s) added" . ($skipped > 0 ? ", $skipped skipped." : '.'));
+        else flash('error', 'No lines added. Check that subjects exist.');
     }
 
     if ($action === 'update_curriculum') {
@@ -414,7 +434,7 @@ $programs = fetch_all(
      GROUP BY p.programs_id
      ORDER BY d.department_code, p.program_code'
 );
-$subjects = fetch_all('SELECT subject_id, subject_code, subject_description, (lec_credit + lab_credit) AS units, lec_credit, lab_credit, lec_hours, lab_hours FROM subjects ORDER BY subject_code');
+$subjects = fetch_all('SELECT subject_id, subject_code, subject_description, (lec_credit + lab_credit) AS units, lec_credit, lab_credit, lec_hours, lab_hours, teaching_department_id FROM subjects ORDER BY subject_code');
 
 $curriculum = [];
 $recentOfferings = [];
@@ -573,7 +593,7 @@ ob_start();
         </div>
     </div>
     <?php if ($studentContextId > 0): ?>
-    <?php $ctxStudent = fetch_one('SELECT id, full_name, student_number, year_level FROM students WHERE id = :id', ['id' => $studentContextId]); ?>
+    <?php $ctxStudent = fetch_one('SELECT id, CONCAT(first_name, \' \', IFNULL(middle_name, \'\'), \' \', last_name) AS full_name, student_number, year_level FROM students WHERE id = :id', ['id' => $studentContextId]); ?>
     <?php if ($ctxStudent): ?>
     <div class="card" style="padding:12px 16px;margin-bottom:16px;background:var(--surface2);">
         <strong>Student:</strong> <?= h($ctxStudent['full_name']) ?>
@@ -760,11 +780,17 @@ function openEditCurriculum(line) {
 function filterSubjectSelect(input, selectId) {
     var q = input.value.toLowerCase();
     var select = document.getElementById(selectId);
+    var firstVisible = null;
     for (var i = 0; i < select.options.length; i++) {
         var opt = select.options[i];
         var code = (opt.getAttribute('data-code') || '').toLowerCase();
         var desc = (opt.getAttribute('data-desc') || '').toLowerCase();
-        opt.style.display = (code.indexOf(q) !== -1 || desc.indexOf(q) !== -1) ? '' : 'none';
+        var match = (code.indexOf(q) !== -1 || desc.indexOf(q) !== -1);
+        opt.style.display = match ? '' : 'none';
+        if (match && !opt.selected && firstVisible === null && opt.value !== '') firstVisible = opt;
+    }
+    if (q.length > 0 && firstVisible) {
+        select.value = firstVisible.value;
     }
 }
 </script>
@@ -868,9 +894,10 @@ ob_start(); ?>
 <?php $importForm = ob_get_clean();
 
 $modals = [
+    render_modal('addProgramModal',  'Add Program',           $addProgramForm),
     render_modal('subjectModal',    'Add Subject',             render_curriculum_subject_form()),
-    render_modal('manageSubjectModal', 'Manage Subjects',      render_subject_manage_modal_body($subjects, $canManage), true),
-    render_modal('curriculumModal', 'Add Curriculum Line', render_curriculum_line_form_multi_prereq($programs, $subjects), true),
+    render_modal('manageSubjectModal', 'Manage Subjects',      render_subject_manage_modal_body($subjects, $canManage), false, true),
+    render_modal('curriculumModal', 'Add Curriculum Line', render_curriculum_line_form_multi_prereq($programs, $subjects, $selectedProgramId), true),
     render_modal('bulkCurriculumModal', 'Bulk Add Curriculum Lines', render_bulk_curriculum_form($programs, $subjects), true),
     render_modal('editProgramModal', 'Edit Program', $editProgramForm),
     render_modal('importModal', 'Import Curriculum CSV', $importForm),

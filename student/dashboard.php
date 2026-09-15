@@ -14,9 +14,15 @@ $currentTerm = current_term();
 $currentSubjects = [];
 if ($currentTerm !== null) {
     $currentSubjects = fetch_all(
-        'SELECT sub.subject_code, sub.subject_description, ss.units, o.day_of_week, o.time_range, o.room
+        'SELECT sub.subject_code, sub.subject_description, ss.units,
+                COALESCE(cs.day, o.day_of_week) AS day_of_week,
+                COALESCE(cs.time_range, o.time_range) AS time_range,
+                COALESCE(cs.room, o.room) AS room,
+                COALESCE(sc.sched_code, o.sched_code) AS sched_code
          FROM student_subjects ss
          INNER JOIN section_subject_offerings o ON o.id = ss.offering_id
+         LEFT JOIN schedule_codes sc ON sc.offering_id = o.id
+         LEFT JOIN class_schedules cs ON cs.schedule_code_id = sc.id
          INNER JOIN subjects sub ON sub.subject_id = ss.subject_id
          WHERE ss.student_id = :student_id AND ss.term_id = :term_id AND ss.enrollment_status = "enrolled"
          ORDER BY sub.subject_code',
@@ -311,10 +317,11 @@ ob_start();
     <h3>Present academic year and semester subjects</h3>
     <div class="table-wrap">
         <table>
-            <thead><tr><th>Code</th><th>Description</th><th>Units</th><th>Schedule</th><th>Room</th></tr></thead>
+            <thead><tr><th>Sched Code</th><th>Code</th><th>Description</th><th>Units</th><th>Schedule</th><th>Room</th></tr></thead>
             <tbody>
             <?php foreach ($currentSubjects as $subject): ?>
                 <tr>
+                    <td><span class="badge" style="font-family:monospace;"><?= h($subject['sched_code'] ?? '—') ?></span></td>
                     <td><?= h($subject['subject_code']) ?></td>
                     <td><?= h($subject['subject_description']) ?></td>
                     <td><?= h($subject['units']) ?></td>
@@ -327,7 +334,7 @@ ob_start();
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" async></script>
 <script>
 (function () {
     var data = <?= json_encode($chartData, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;

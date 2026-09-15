@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/app.php';
-require_role('instructor');
+require_role(['instructor', 'adviser']);
 
 $staff = current_staff();
 $offeringId = (int) ($_GET['offering_id'] ?? 0);
@@ -14,7 +14,7 @@ fputcsv($output, ['student_number', 'full_name', 'address', 'final_grade']);
 
 if ($staff !== null && $offeringId > 0) {
     $rows = fetch_all(
-        'SELECT s.student_number, s.full_name, s.address, ss.final_grade
+        'SELECT s.student_number, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, s.address, ss.final_grade
          FROM student_subjects ss
          INNER JOIN students s ON s.id = ss.student_id
          INNER JOIN section_subject_offerings o ON o.id = ss.offering_id

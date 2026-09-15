@@ -30,6 +30,19 @@ if ($request === null) {
 }
 
 $items = enrollment_request_items((int) $request['id']);
+$offeringIds = array_map(fn($it) => (int) $it['offering_id'], $items);
+$schedCodes = [];
+if ($offeringIds !== []) {
+    $ph = implode(',', array_fill(0, count($offeringIds), '?'));
+    $rows = fetch_all("SELECT id, sched_code FROM section_subject_offerings WHERE id IN ($ph)", $offeringIds);
+    foreach ($rows as $r) {
+        $schedCodes[(int) $r['id']] = $r['sched_code'];
+    }
+}
+foreach ($items as &$it) {
+    $it['sched_code'] = $schedCodes[(int) $it['offering_id']] ?? null;
+}
+unset($it);
 
 $program = fetch_one(
     'SELECT program_code, program_name, program_major FROM programs WHERE programs_id = :id',
@@ -134,26 +147,26 @@ ob_start();
         <table>
             <thead>
                 <tr>
-                    <th style="width: 10%">Sched Code</th>
-                    <th style="width: 14%">Course Code</th>
-                    <th style="width: 35%">Course Description</th>
+                    <th style="width: 12%">Sched Code</th>
+                    <th style="width: 12%">Course Code</th>
+                    <th style="width: 33%">Course Description</th>
                     <th style="width: 8%">Units</th>
                     <th style="width: 12%">Time</th>
                     <th style="width: 8%">Day</th>
-                    <th style="width: 12%">Room</th>
+                    <th style="width: 15%">Room</th>
                 </tr>
             </thead>
             <tbody>
                 <?php $i = 1; $totalUnits = 0; $totalLabCredits = 0; ?>
                 <?php foreach ($items as $item): ?>
                 <tr>
-                    <td></td>
+                    <td style="font-family:monospace;font-size:11px;"><?= h($item['sched_code'] ?? '') ?></td>
                     <td><?= h($item['subject_code']) ?></td>
                     <td><?= h($item['subject_description']) ?></td>
                     <td style="text-align:center"><?= h($item['units']) ?></td>
-                    <td></td>
-                    <td></td>
-                    <td></td>
+                    <td><?= h($item['time_range'] ?? '') ?></td>
+                    <td><?= h($item['day_of_week'] ?? '') ?></td>
+                    <td><?= h($item['room'] ?? '') ?></td>
                 </tr>
                 <?php $totalUnits += (float) $item['units']; ?>
                 <?php $totalLabCredits += (float) ($item['lab_credit'] ?? 0); ?>
@@ -450,11 +463,12 @@ table {
 
 table thead {
     background: none;
+    color: #16a34a;
 }
 
 table th {
     background: none;
-    border: 1px solid #16a34a;
+    border: 1px solid #22c55e;
     padding: 7px 8px;
     text-align: left;
     font-size: 11px;
@@ -465,7 +479,7 @@ table th {
 }
 
 table td {
-    border: 1px solid #16a34a;
+    border: 1px solid #bbf7d0;
     padding: 5px 8px;
     height: 25px;
     font-size: 12px;

@@ -10,6 +10,8 @@ if (is_post() && ($_POST['action'] ?? '') === 'delete_user') {
     $userId = (int) ($_POST['user_id'] ?? 0);
     if ($userId > 0) {
         if (soft_delete('users', 'users_id', $userId)) {
+            execute_sql('UPDATE staff SET status = \'inactive\' WHERE users_id = :uid', ['uid' => $userId]);
+            execute_sql('DELETE FROM user_roles WHERE user_id = :uid', ['uid' => $userId]);
             flash('success', 'User account marked inactive.');
         } else {
             flash('error', 'Unable to deactivate user.');
@@ -23,6 +25,8 @@ if (is_post() && ($_POST['action'] ?? '') === 'bulk_delete_users') {
     if (is_array($ids) && count($ids) > 0) {
         $ph = implode(',', array_fill(0, count($ids), '?'));
         execute_sql("UPDATE users SET status = 'inactive' WHERE users_id IN ({$ph})", $ids);
+        execute_sql("UPDATE staff SET status = 'inactive' WHERE users_id IN ({$ph})", $ids);
+        execute_sql("DELETE FROM user_roles WHERE user_id IN ({$ph})", $ids);
         flash('success', count($ids) . ' user(s) deleted.');
     }
     redirect('admin/users.php');
@@ -31,7 +35,7 @@ if (is_post() && ($_POST['action'] ?? '') === 'bulk_delete_users') {
 $users = fetch_all(
     'SELECT u.users_id, u.username, u.email,
             COALESCE(u.status, "active") AS status,
-            COALESCE(s.full_name, st.full_name, u.username, u.email) AS display_name,
+            COALESCE(CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name), st.full_name, u.username, u.email) AS display_name,
             GROUP_CONCAT(r.role_name ORDER BY r.role_name SEPARATOR ", ") AS roles
      FROM users u
      LEFT JOIN students s ON s.id = u.student_id

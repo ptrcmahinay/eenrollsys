@@ -8,6 +8,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/migrations.php';
 require_once __DIR__ . '/components/actions.php';
+require_once __DIR__ . '/grading_engine.php';
 require_once __DIR__ . '/../vendor/autoload.php';
 
 define('APP_ROOT', realpath(__DIR__ . '/..') ?: __DIR__ . '/..');
@@ -25,24 +26,30 @@ function db(): PDO
         ensure_curriculum_columns();
         ensure_drop_units_column();
         ensure_student_subjects_columns();
+        ensure_sched_code_column();
+        ensure_schedule_codes_table();
+        ensure_class_schedules_table();
+        ensure_multiple_schedules_per_offering();
+        ensure_schedule_code_id_in_student_subjects();
+        migrate_offering_data_to_new_tables();
+        backfill_schedule_code_id_in_student_subjects();
         ensure_fee_workflow_columns();
         ensure_add_drop_table();
         ensure_processing_columns();
         ensure_payments_table();
+        ensure_new_class_schedules_columns();
+        ensure_schedule_change_requests_table();
+        ensure_student_subjects_schedule_id();
+        ensure_enrollment_request_items_schedule_id();
+        ensure_composite_indexes();
+        ensure_department_chair_column();
+        ensure_subject_teaching_department_column();
+        ensure_grading_engine_tables();
+        ensure_grades_term_id_column();
+        ensure_offering_term_protection();
+        ensure_student_subjects_grades_locked_column();
     }
     return $pdo;
-}
-
-function getInitials($name) {
-    $words = explode(' ', trim($name));
-    $initials = '';
-
-    foreach ($words as $w) {
-        $initials .= strtoupper($w[0]);
-        if (strlen($initials) >= 2) break;
-    }
-
-    return $initials ?: 'U';
 }
 
 function renderBreadcrumbs(string $pageTitle, string $role, array $breadcrumbs = []): void
@@ -202,18 +209,6 @@ function dismiss_notification(string $role, int $notificationId): void
     }
 }
 
-function mark_notification_read(string $role, int $notificationId): void
-{
-    try {
-        if ($role === 'student') {
-            execute_sql('UPDATE student_notifications SET is_read = 1 WHERE id = :id', ['id' => $notificationId]);
-        } else {
-            execute_sql('UPDATE staff_notifications SET is_read = 1 WHERE id = :id', ['id' => $notificationId]);
-        }
-    } catch (\Throwable $e) {
-    }
-}
-
 function inline_notification_badge_class(string $type): string
 {
     return match ($type) {
@@ -291,6 +286,715 @@ function semester_label(string $semester): string
     return $map[$semester] ?? $semester;
 }
 
+function semester_to_digit(string $sem): string
+{
+    return match ($sem) {
+        '1' => '1',
+        '2' => '2',
+        'mid', 'Mid' => '3',
+        default => '0',
+    };
+}
+
+function dept_to_sched_digit(string $deptCode): string
+{
+    static $mapping = null;
+    if ($mapping === null) {
+        $raw = setting('dept_sched_digits', '');
+        if ($raw === '') {
+            $mapping = [];
+        } else {
+            $decoded = json_decode($raw, true);
+            $mapping = is_array($decoded) ? $decoded : [];
+        }
+
+        $allDepts = fetch_all('SELECT department_code FROM departments WHERE status = "active" ORDER BY department_code');
+        $usedDigits = array_values($mapping);
+        $nextDigit = 0;
+        $changed = false;
+        foreach ($allDepts as $d) {
+            $code = $d['department_code'];
+            if (!isset($mapping[$code])) {
+                while (in_array((string) $nextDigit, $usedDigits, true) && $nextDigit < 9) {
+                    $nextDigit++;
+                }
+                if ($nextDigit < 9) {
+                    $mapping[$code] = (string) $nextDigit;
+                    $usedDigits[] = (string) $nextDigit;
+                    $nextDigit++;
+                    $changed = true;
+                } else {
+                    $mapping[$code] = '9';
+                }
+            }
+        }
+        if ($changed) {
+            set_setting('dept_sched_digits', json_encode($mapping));
+        }
+    }
+    return $mapping[$deptCode] ?? '9';
+}
+
+function generate_sched_code_for_offering(int $offeringId, string $deptDigit, string $prefix, int $termId, int $programId, int $sectionId, int $curriculumId, int $subjectId): string
+{
+    $offering = fetch_one(
+        'SELECT ay.start_year, t.semester
+         FROM section_subject_offerings o
+         INNER JOIN academic_terms t ON t.id = o.term_id
+         INNER JOIN academic_years ay ON ay.id = t.academic_year_id
+         WHERE o.id = :id',
+        ['id' => $offeringId]
+    );
+    if ($offering === null) return '';
+
+    $existing = fetch_all(
+        'SELECT sched_code FROM section_subject_offerings WHERE sched_code LIKE :pattern',
+        ['pattern' => $prefix . '%']
+    );
+    $maxSeq = 0;
+    foreach ($existing as $row) {
+        $num = (int) substr((string) $row['sched_code'], 6);
+        if ($num > $maxSeq) $maxSeq = $num;
+    }
+    $seq = $maxSeq + 1;
+    $code = $prefix . str_pad((string) $seq, 3, '0', STR_PAD_LEFT);
+
+    execute_sql(
+        'UPDATE section_subject_offerings SET sched_code = :code WHERE id = :id',
+        ['code' => $code, 'id' => $offeringId]
+    );
+
+    return $code;
+}
+
+function generate_sched_code_for_new_offering(int $termId, int $programId): string
+{
+    $term = fetch_one(
+        'SELECT ay.start_year, t.semester
+         FROM academic_terms t
+         INNER JOIN academic_years ay ON ay.id = t.academic_year_id
+         WHERE t.id = :id',
+        ['id' => $termId]
+    );
+    if ($term === null) return '';
+
+    $program = fetch_one(
+        'SELECT d.department_code
+         FROM programs p
+         INNER JOIN departments d ON d.dept_id = p.department_id
+         WHERE p.programs_id = :id',
+        ['id' => $programId]
+    );
+    if ($program === null) return '';
+
+    $prefix = (string) $term['start_year']
+        . semester_to_digit((string) $term['semester'])
+        . dept_to_sched_digit((string) $program['department_code']);
+
+    $maxSeq = 0;
+    foreach (fetch_all('SELECT sched_code FROM section_subject_offerings WHERE sched_code LIKE :pattern', ['pattern' => $prefix . '%']) as $ex) {
+        $num = (int) substr((string) $ex['sched_code'], 6);
+        if ($num > $maxSeq) $maxSeq = $num;
+    }
+
+    return $prefix . str_pad((string) ($maxSeq + 1), 3, '0', STR_PAD_LEFT);
+}
+
+function auto_generate_offerings_for_section(int $sectionId, ?int $termId = null): int
+{
+    $section = fetch_one(
+        'SELECT sec.program_id, sec.year_level
+         FROM sections sec
+         WHERE sec.id = :sid',
+        ['sid' => $sectionId]
+    );
+    if ($section === null) return 0;
+
+    if ($termId === null) {
+        $term = fetch_one(
+            'SELECT t.id AS term_id
+             FROM academic_terms t
+             WHERE t.is_active = 1
+             LIMIT 1'
+        );
+        if ($term === null) return 0;
+        $termId = (int) $term['term_id'];
+    }
+
+    $termInfo = fetch_one(
+        'SELECT t.semester FROM academic_terms t WHERE t.id = :tid',
+        ['tid' => $termId]
+    );
+    if ($termInfo === null) return 0;
+
+    $semesterMap = ['1' => '1st', '2' => '2nd', 'mid' => 'mid'];
+    $semesterFilter = $semesterMap[(string) $termInfo['semester']] ?? (string) $termInfo['semester'];
+
+    $curriculumLines = fetch_all(
+        'SELECT pc.curriculum_id, pc.subject_id
+         FROM program_curriculum pc
+         WHERE pc.program_id = :pid
+           AND pc.year_level = :yr
+           AND pc.semester = :sem
+           AND pc.status = "active"',
+        ['pid' => (int) $section['program_id'], 'yr' => (int) $section['year_level'], 'sem' => $semesterFilter]
+    );
+
+    $created = 0;
+    foreach ($curriculumLines as $line) {
+        $exists = fetch_one(
+            'SELECT id FROM section_subject_offerings
+             WHERE term_id = :tid AND section_id = :sid AND subject_id = :subid',
+            ['tid' => $termId, 'sid' => $sectionId, 'subid' => (int) $line['subject_id']]
+        );
+        if ($exists !== null) continue;
+
+        $schedCode = generate_sched_code_for_new_offering($termId, (int) $section['program_id']);
+
+        execute_sql(
+            'INSERT INTO section_subject_offerings
+                (term_id, section_id, curriculum_id, subject_id, max_slots, syllabus_path, sched_code, created_at)
+             VALUES (:tid, :sid, :cid, :subid, NULL, NULL, :sched_code, NOW())',
+            [
+                'tid' => $termId,
+                'sid' => $sectionId,
+                'cid' => (int) $line['curriculum_id'],
+                'subid' => (int) $line['subject_id'],
+                'sched_code' => $schedCode,
+            ]
+        );
+        $created++;
+    }
+    return $created;
+}
+
+function generate_all_sched_codes_for_term_program(int $termId, int $programId): array
+{
+    $term = fetch_one(
+        'SELECT ay.start_year, t.semester
+         FROM academic_terms t
+         INNER JOIN academic_years ay ON ay.id = t.academic_year_id
+         WHERE t.id = :id',
+        ['id' => $termId]
+    );
+    if ($term === null) return ['success' => false, 'message' => 'Term not found.'];
+
+    $program = fetch_one(
+        'SELECT d.department_code
+         FROM programs p
+         INNER JOIN departments d ON d.dept_id = p.department_id
+         WHERE p.programs_id = :id',
+        ['id' => $programId]
+    );
+    if ($program === null) return ['success' => false, 'message' => 'Program not found.'];
+
+    $prefix = $term['start_year']
+        . semester_to_digit((string) $term['semester'])
+        . dept_to_sched_digit((string) $program['department_code']);
+
+    $offerings = fetch_all(
+        'SELECT o.id, o.term_id, o.section_id, o.curriculum_id, o.subject_id,
+                sec.program_id
+         FROM section_subject_offerings o
+         INNER JOIN sections sec ON sec.id = o.section_id
+         WHERE o.term_id = :term_id AND sec.program_id = :program_id
+           AND (o.sched_code IS NULL OR o.sched_code = "")
+         ORDER BY sec.year_level, sec.section_name, o.id',
+        ['term_id' => $termId, 'program_id' => $programId]
+    );
+
+    if ($offerings === []) return ['success' => false, 'message' => 'No uncoded offerings found for this term and program.'];
+
+    $existing = fetch_all(
+        'SELECT sched_code FROM section_subject_offerings WHERE sched_code LIKE :pattern',
+        ['pattern' => $prefix . '%']
+    );
+    $maxSeq = 0;
+    foreach ($existing as $row) {
+        $num = (int) substr((string) $row['sched_code'], 6);
+        if ($num > $maxSeq) $maxSeq = $num;
+    }
+
+    $count = 0;
+    foreach ($offerings as $o) {
+        $maxSeq++;
+        $code = $prefix . str_pad((string) $maxSeq, 3, '0', STR_PAD_LEFT);
+        execute_sql(
+            'UPDATE section_subject_offerings SET sched_code = :code WHERE id = :id',
+            ['code' => $code, 'id' => $o['id']]
+        );
+        $count++;
+    }
+
+    return ['success' => true, 'message' => "Generated $count schedule code(s)."];
+}
+
+function backfill_sched_codes(): void
+{
+    $uncoded = fetch_all(
+        'SELECT id FROM section_subject_offerings WHERE sched_code IS NULL OR sched_code = ""'
+    );
+    foreach ($uncoded as $row) {
+        $offering = fetch_one(
+            'SELECT o.id, o.term_id, o.section_id, o.curriculum_id, o.subject_id, sec.program_id,
+                    ay.start_year, t.semester, d.department_code
+             FROM section_subject_offerings o
+             INNER JOIN academic_terms t ON t.id = o.term_id
+             INNER JOIN academic_years ay ON ay.id = t.academic_year_id
+             INNER JOIN sections sec ON sec.id = o.section_id
+             INNER JOIN programs p ON p.programs_id = sec.program_id
+             INNER JOIN departments d ON d.dept_id = p.department_id
+             WHERE o.id = :id',
+            ['id' => (int) $row['id']]
+        );
+        if ($offering === null) continue;
+
+        $prefix = $offering['start_year']
+            . semester_to_digit((string) $offering['semester'])
+            . dept_to_sched_digit((string) $offering['department_code']);
+
+        $existing = fetch_all(
+            'SELECT sched_code FROM section_subject_offerings WHERE sched_code LIKE :pattern',
+            ['pattern' => $prefix . '%']
+        );
+        $maxSeq = 0;
+        foreach ($existing as $ex) {
+            $num = (int) substr((string) $ex['sched_code'], 6);
+            if ($num > $maxSeq) $maxSeq = $num;
+        }
+        $seq = $maxSeq + 1;
+        $code = $prefix . str_pad((string) $seq, 3, '0', STR_PAD_LEFT);
+
+        execute_sql(
+            'UPDATE section_subject_offerings SET sched_code = :code WHERE id = :id',
+            ['code' => $code, 'id' => $offering['id']]
+        );
+    }
+}
+
+// ── Class schedule helpers ──────────────────────────────────────────────────
+function time_to_minutes(string $time): int
+{
+    $parts = explode(':', $time);
+    return ((int) ($parts[0] ?? 0)) * 60 + ((int) ($parts[1] ?? 0));
+}
+
+function format_time_12h(string $time): string
+{
+    $t = trim($time);
+    if ($t === '') return '';
+    $ts = strtotime($t);
+    return $ts === false ? $t : date('g:i A', $ts);
+}
+
+function format_instructor_short(string $fullName): string
+{
+    $name = trim($fullName);
+    if ($name === '') return 'TBA';
+    $parts = preg_split('/\s+/', $name, 2);
+    if (count($parts) < 2) return $name;
+    $initial = mb_strtoupper(mb_substr($parts[0], 0, 1)) . '.';
+    return $initial . ' ' . $parts[1];
+}
+
+function format_time_range(string $start, string $end): string
+{
+    $s = trim(format_time_12h($start));
+    $e = trim(format_time_12h($end));
+    if ($s === '' && $e === '') return '';
+    return $s . ($e !== '' ? ' — ' . $e : '');
+}
+
+function offering_required_weekly_hours(array $offering): float
+{
+    $hours = (float) (($offering['lec_hours'] ?? 0) + ($offering['lab_hours'] ?? 0));
+    return $hours > 0 ? $hours : 0.5;
+}
+
+function schedule_entries_weekly_hours(array $entries): float
+{
+    $total = 0.0;
+    foreach ($entries as $e) {
+        $s = trim((string) ($e['start_time'] ?? ''));
+        $en = trim((string) ($e['end_time'] ?? ''));
+        if ($s === '' || $en === '') continue;
+        $diff = time_to_minutes($en) - time_to_minutes($s);
+        if ($diff > 0) {
+            $total += $diff / 60.0;
+        }
+    }
+    return $total;
+}
+
+/**
+ * Schedule status for an offering (a section's subject assignment):
+ *   'none'      — no schedule entries yet
+ *   'partial'   — at least one entry, but not enough weekly hours
+ *   'scheduled' — enough weekly hours have been scheduled
+ */
+function offering_schedule_status(array $offering, array $entries): string
+{
+    if ($entries === []) return 'none';
+    $required = offering_required_weekly_hours($offering);
+    $scheduled = schedule_entries_weekly_hours($entries);
+    return $scheduled >= $required ? 'scheduled' : 'partial';
+}
+
+function schedule_status_badge(string $status): string
+{
+    return match ($status) {
+        'scheduled' => '<span class="badge success">🟢 Scheduled</span>',
+        'partial'   => '<span class="badge info">🔵 Partially Scheduled</span>',
+        default     => '<span class="badge warning">🟠 Not Scheduled</span>',
+    };
+}
+
+function ensure_schedule_code_for_offering(int $offeringId): string
+{
+    $offering = fetch_one('SELECT sched_code FROM section_subject_offerings WHERE id = :id', ['id' => $offeringId]);
+    if ($offering === null) return '';
+    if (!empty($offering['sched_code'])) return (string) $offering['sched_code'];
+
+    $detail = fetch_one(
+        'SELECT o.id, o.term_id, o.section_id, o.curriculum_id, o.subject_id,
+                sec.program_id, ay.start_year, t.semester, d.department_code
+         FROM section_subject_offerings o
+         INNER JOIN academic_terms t ON t.id = o.term_id
+         INNER JOIN academic_years ay ON ay.id = t.academic_year_id
+         INNER JOIN sections sec ON sec.id = o.section_id
+         INNER JOIN programs p ON p.programs_id = sec.program_id
+         INNER JOIN departments d ON d.dept_id = p.department_id
+         WHERE o.id = :id',
+        ['id' => $offeringId]
+    );
+    if ($detail === null) return '';
+
+    $prefix = (string) $detail['start_year']
+        . semester_to_digit((string) $detail['semester'])
+        . dept_to_sched_digit((string) $detail['department_code']);
+
+    $maxSeq = 0;
+    foreach (fetch_all('SELECT sched_code FROM section_subject_offerings WHERE sched_code LIKE :pattern', ['pattern' => $prefix . '%']) as $ex) {
+        $num = (int) substr((string) $ex['sched_code'], 6);
+        if ($num > $maxSeq) $maxSeq = $num;
+    }
+    $code = $prefix . str_pad((string) ($maxSeq + 1), 3, '0', STR_PAD_LEFT);
+
+    execute_sql(
+        'UPDATE section_subject_offerings SET sched_code = :code WHERE id = :id',
+        ['code' => $code, 'id' => $offeringId]
+    );
+
+    return $code;
+}
+
+/**
+ * Check a proposed schedule entry against existing schedules for conflicts.
+ * Returns an array of human-readable conflict messages (empty when OK).
+ *
+ * $data keys:
+ *   section_id          int
+ *   offering_id         int
+ *   day                 string
+ *   start_time          string (HH:MM or HH:MM:SS)
+ *   end_time            string
+ *   room                string (optional)
+ *   instructor_id       int|null
+ *   exclude_schedule_id int   (class_schedules.id to ignore, 0 = none)
+ */
+function find_schedule_conflicts(array $data): array
+{
+    $sectionId = (int) ($data['section_id'] ?? 0);
+    $offeringId = (int) ($data['offering_id'] ?? 0);
+    $day = trim((string) ($data['day'] ?? ''));
+    $start = trim((string) ($data['start_time'] ?? ''));
+    $end = trim((string) ($data['end_time'] ?? ''));
+    $room = trim((string) ($data['room'] ?? ''));
+    $instructorId = !empty($data['instructor_id']) ? (int) $data['instructor_id'] : null;
+    $excludeId = (int) ($data['exclude_schedule_id'] ?? 0);
+
+    if ($day === '' || $start === '' || $end === '' || time_to_minutes($start) >= time_to_minutes($end)) {
+        return [];
+    }
+
+    $sectionLabel = 'Section';
+    if ($sectionId > 0) {
+        $sec = fetch_one(
+            'SELECT p.program_code, sec.year_level, sec.section_name
+             FROM sections sec
+             INNER JOIN programs p ON p.programs_id = sec.program_id
+             WHERE sec.id = :id',
+            ['id' => $sectionId]
+        );
+        if ($sec !== null) {
+            $sectionLabel = $sec['program_code'] . ' ' . $sec['year_level'] . $sec['section_name'];
+        }
+    }
+
+    $conflicts = [];
+
+    $rows = fetch_all(
+        'SELECT sub.subject_code, cs.day, cs.start_time, cs.end_time
+         FROM class_schedules cs
+         INNER JOIN schedule_codes sc ON sc.id = cs.schedule_code_id
+         INNER JOIN subjects sub ON sub.subject_id = sc.subject_id
+         WHERE cs.id <> :exclude
+           AND sc.section_id = :section_id
+           AND sc.offering_id <> :offering_id
+           AND cs.day = :day
+           AND cs.start_time IS NOT NULL AND cs.end_time IS NOT NULL
+           AND cs.start_time < :end_time AND cs.end_time > :start_time',
+        [
+            'exclude' => $excludeId,
+            'section_id' => $sectionId,
+            'offering_id' => $offeringId,
+            'day' => $day,
+            'start_time' => $start,
+            'end_time' => $end,
+        ]
+    );
+    foreach ($rows as $r) {
+        $conflicts[] = $sectionLabel . ' already has ' . $r['subject_code']
+            . ' scheduled on ' . $r['day'] . ' from '
+            . format_time_12h((string) $r['start_time']) . ' – ' . format_time_12h((string) $r['end_time']) . '.';
+    }
+
+    if ($instructorId > 0) {
+        $rows = fetch_all(
+            'SELECT st.full_name, cs.day, cs.start_time, cs.end_time,
+                    sub.subject_code, p.program_code, sec.year_level, sec.section_name
+             FROM class_schedules cs
+             INNER JOIN schedule_codes sc ON sc.id = cs.schedule_code_id
+             INNER JOIN sections sec ON sec.id = sc.section_id
+             INNER JOIN programs p ON p.programs_id = sec.program_id
+             INNER JOIN subjects sub ON sub.subject_id = sc.subject_id
+             LEFT JOIN staff st ON st.staff_id = cs.instructor_id
+             WHERE cs.id <> :exclude
+               AND cs.instructor_id = :instructor_id
+               AND cs.day = :day
+               AND cs.start_time IS NOT NULL AND cs.end_time IS NOT NULL
+               AND cs.start_time < :end_time AND cs.end_time > :start_time',
+            [
+                'exclude' => $excludeId,
+                'instructor_id' => $instructorId,
+                'day' => $day,
+                'start_time' => $start,
+                'end_time' => $end,
+            ]
+        );
+        foreach ($rows as $r) {
+            $conflicts[] = (($r['full_name'] ?? '') !== '' ? $r['full_name'] : ('Instructor #' . $instructorId))
+                . ' is already scheduled on ' . $r['day'] . ' '
+                . format_time_12h((string) $r['start_time']) . ' – ' . format_time_12h((string) $r['end_time'])
+                . ' (' . $r['subject_code'] . ', ' . $r['program_code'] . ' ' . $r['year_level'] . $r['section_name'] . ').';
+        }
+    }
+
+    if ($room !== '') {
+        $rows = fetch_all(
+            'SELECT cs.day, cs.start_time, cs.end_time,
+                    sub.subject_code, p.program_code, sec.year_level, sec.section_name
+             FROM class_schedules cs
+             INNER JOIN schedule_codes sc ON sc.id = cs.schedule_code_id
+             INNER JOIN sections sec ON sec.id = sc.section_id
+             INNER JOIN programs p ON p.programs_id = sec.program_id
+             INNER JOIN subjects sub ON sub.subject_id = sc.subject_id
+             WHERE cs.id <> :exclude
+               AND cs.room = :room AND cs.room IS NOT NULL AND cs.room <> \'\'
+               AND cs.day = :day
+               AND cs.start_time IS NOT NULL AND cs.end_time IS NOT NULL
+               AND cs.start_time < :end_time AND cs.end_time > :start_time',
+            [
+                'exclude' => $excludeId,
+                'room' => $room,
+                'day' => $day,
+                'start_time' => $start,
+                'end_time' => $end,
+            ]
+        );
+        foreach ($rows as $r) {
+            $conflicts[] = 'Room ' . $room . ' is already booked on ' . $r['day'] . ' '
+                . format_time_12h((string) $r['start_time']) . ' – ' . format_time_12h((string) $r['end_time'])
+                . ' (' . $r['subject_code'] . ', ' . $r['program_code'] . ' ' . $r['year_level'] . $r['section_name'] . ').';
+        }
+    }
+
+    return $conflicts;
+}
+
+function schedule_entries_for_offerings(array $offeringIds): array
+{
+    if ($offeringIds === []) return [];
+    $ids = array_values(array_filter(array_map('intval', $offeringIds), static fn($v) => $v > 0));
+    if ($ids === []) return [];
+
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $rows = fetch_all(
+        "SELECT sc.offering_id, cs.id AS schedule_id, cs.schedule_code_id, cs.day, cs.start_time, cs.end_time,
+                cs.time_range, cs.room, cs.instructor_id, st.full_name AS instructor_name
+         FROM class_schedules cs
+         INNER JOIN schedule_codes sc ON sc.id = cs.schedule_code_id
+         LEFT JOIN staff st ON st.staff_id = cs.instructor_id
+         WHERE sc.offering_id IN ($placeholders)
+         ORDER BY FIELD(cs.day, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'), cs.start_time",
+        $ids
+    );
+
+    $map = [];
+    foreach ($rows as $row) {
+        $oid = (int) $row['offering_id'];
+        $map[$oid][] = $row;
+    }
+    return $map;
+}
+
+/**
+ * Render a weekly timetable grid for a set of schedule entries.
+ * Each entry may include: day, start_time, end_time, subject_code,
+ * subject_description, instructor_name, room, section_label, link.
+ */
+function render_weekly_timetable(array $entries, array $options = []): string
+{
+    if ($entries === []) {
+        return '<p class="helper" style="text-align:center;padding:24px;">No scheduled classes yet.</p>';
+    }
+
+    $compact = $options['compact'] ?? false;
+    $fixedRange = $options['fixed_range'] ?? false;
+
+    $dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    $days = [];
+    foreach ($dayOrder as $d) {
+        foreach ($entries as $e) {
+            if (($e['day'] ?? '') === $d) { $days[] = $d; break; }
+        }
+    }
+    if ($days === []) {
+        return '<p class="helper" style="text-align:center;padding:24px;">No scheduled classes yet.</p>';
+    }
+
+    if ($fixedRange) {
+        $minStart = 7 * 60;
+        $maxEnd = 18 * 60;
+    } else {
+        $minStart = 24 * 60;
+        $maxEnd = 0;
+        foreach ($entries as $e) {
+            if (empty($e['start_time']) || empty($e['end_time'])) continue;
+            $s = time_to_minutes((string) $e['start_time']);
+            $en = time_to_minutes((string) $e['end_time']);
+            if ($s < $minStart) $minStart = $s;
+            if ($en > $maxEnd) $maxEnd = $en;
+        }
+        if ($maxEnd === 0) {
+            return '<p class="helper" style="text-align:center;padding:24px;">No scheduled classes yet.</p>';
+        }
+        $minStart = (int) floor($minStart / 30) * 30;
+        $maxEnd = (int) ceil($maxEnd / 30) * 30;
+    }
+
+    $slots = [];
+    for ($m = $minStart; $m < $maxEnd; $m += 30) {
+        $h = intdiv($m, 60);
+        $min = $m % 60;
+        $label = ($h > 12 ? $h - 12 : $h) . ':' . str_pad((string) $min, 2, '0', STR_PAD_LEFT) . ($h >= 12 ? ' PM' : ' AM');
+        $slots[] = ['start' => $m, 'end' => $m + 30, 'label' => $label];
+    }
+
+    $blocks = [];
+    foreach ($days as $di => $d) {
+        $blocks[$di] = [];
+        foreach ($entries as $e) {
+            if (($e['day'] ?? '') !== $d) continue;
+            if (empty($e['start_time']) || empty($e['end_time'])) continue;
+            $s = time_to_minutes((string) $e['start_time']);
+            $en = time_to_minutes((string) $e['end_time']);
+            $rowStart = intdiv($s - $minStart, 30);
+            $rowEnd = intdiv($en - $minStart, 30);
+            $rowSpan = $rowEnd - $rowStart;
+            if ($rowSpan <= 0) continue;
+            $blocks[$di][] = ['rowStart' => $rowStart, 'rowSpan' => $rowSpan, 'entry' => $e];
+        }
+    }
+
+    $palette = [
+        ['#dbeafe', '#1d4ed8'],
+        ['#dcfce7', '#15803d'],
+        ['#fef3c7', '#b45309'],
+        ['#fce7f3', '#be185d'],
+        ['#e0e7ff', '#4338ca'],
+        ['#ffedd5', '#c2410c'],
+        ['#ccfbf1', '#0f766e'],
+        ['#e2e8f0', '#334155'],
+    ];
+
+    $html = '<div class="table-wrap"><table class="weekly-timetable">';
+    $html .= '<thead><tr><th class="tt-time-head">Time</th>';
+    foreach ($days as $d) {
+        $html .= '<th>' . h($d) . '</th>';
+    }
+    $html .= '</tr></thead><tbody>';
+
+    for ($r = 0; $r < count($slots); $r++) {
+        $labelContent = h($slots[$r]['label']);
+
+        $html .= '<tr>';
+        $html .= '<td class="tt-slot-label">' . $labelContent . '</td>';
+        foreach ($days as $di => $d) {
+            $emitted = false;
+            $covered = false;
+            foreach ($blocks[$di] as $b) {
+                if ($b['rowStart'] === $r) {
+                    $emitted = true;
+                    $e = $b['entry'];
+                    $tone = $palette[crc32((string) ($e['subject_code'] ?? '')) % count($palette)];
+                    if ($compact) {
+                        $inner = '<div style="font-weight:700;font-size:13px;letter-spacing:0.3px;">' . h($e['subject_code'] ?? '') . '</div>';
+                        if (!empty($e['room'])) {
+                            $inner .= '<div style="font-size:11px;margin-top:1px;">' . h($e['room']) . '</div>';
+                        }
+                        if (!empty($e['instructor_name'])) {
+                            $inner .= '<div style="font-size:10px;opacity:0.8;">' . h($e['instructor_name']) . '</div>';
+                        }
+                    } else {
+                        $inner = '<strong style="font-size:13px;">' . h($e['subject_code'] ?? '') . '</strong>'
+                            . '<div class="tt-subj">' . h($e['subject_description'] ?? '') . '</div>'
+                            . '<div class="tt-time" style="font-size:11px;opacity:0.8;margin-top:2px;">' . h(format_time_range((string) ($e['start_time'] ?? ''), (string) ($e['end_time'] ?? ''))) . '</div>';
+                        if (!empty($e['instructor_name'])) {
+                            $inner .= '<div class="tt-instr">' . h($e['instructor_name']) . '</div>';
+                        }
+                        if (!empty($e['room'])) {
+                            $inner .= '<div class="tt-room">Room: ' . h($e['room']) . '</div>';
+                        }
+                        if (!empty($e['section_label'])) {
+                            $inner .= '<div class="tt-section">' . h($e['section_label']) . '</div>';
+                        }
+                    }
+                    $style = 'display:block;text-decoration:none;background:' . $tone[0] . ';color:' . $tone[1]
+                        . ';border-radius:8px;padding:8px 10px;font-size:12px;height:100%;box-sizing:border-box;min-height:56px;';
+                    if (!empty($e['link'])) {
+                        $cell = '<a href="' . h($e['link']) . '" class="tt-block" style="' . $style . '">' . $inner . '</a>';
+                    } else {
+                        $cell = '<div class="tt-block" style="' . $style . '">' . $inner . '</div>';
+                    }
+                    $html .= '<td rowspan="' . $b['rowSpan'] . '">' . $cell . '</td>';
+                    break;
+                }
+                if ($b['rowStart'] < $r && $r < $b['rowStart'] + $b['rowSpan']) {
+                    $covered = true;
+                    break;
+                }
+            }
+            if ($emitted) continue;
+            $html .= '<td></td>';
+        }
+        $html .= '</tr>';
+    }
+
+    $html .= '</tbody></table></div>';
+    return $html;
+}
+
 function role_priority(string $roleName): int
 {
     $priority = [
@@ -349,7 +1053,7 @@ function current_user(): ?array
     $userId = (int) $_SESSION['user_id'];
     $user = fetch_one(
         'SELECT u.users_id, u.username, u.email, u.student_id,
-                COALESCE(u.display_name, s.full_name, st.full_name, u.username, u.email) AS display_name
+                COALESCE(u.display_name, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name), st.full_name, u.username, u.email) AS display_name
          FROM users u
          LEFT JOIN students s ON s.id = u.student_id
          LEFT JOIN staff st ON st.users_id = u.users_id
@@ -409,7 +1113,8 @@ function current_student(): ?array
     }
 
     return fetch_one(
-        'SELECT s.*, p.program_code, p.program_name, p.department_id,
+        'SELECT s.*, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name,
+                p.program_code, p.program_name, p.department_id,
                 sec.section_name, sec.year_level AS section_year_level
          FROM students s
          INNER JOIN programs p ON p.programs_id = s.program_id
@@ -479,27 +1184,22 @@ function request_deadline_badge(array $request, string $stage): string
 
 function grade_deadline_passed(): bool
 {
-    $days = (int) setting('grade_deadline_days', '30');
-    if ($days <= 0) return false;
-    $term = current_term();
-    if ($term === null || empty($term['end_date'])) return false;
-    $gradeDeadline = date('Y-m-d', strtotime((string) $term['end_date'] . " +{$days} days"));
-    return strtotime($gradeDeadline) < time();
+    return GradingEngine::deadlinePassed();
 }
 
-function grade_deadline_badge(): string
+function deadline_badge(string $type, ?array $term): string
 {
-    $days = (int) setting('grade_deadline_days', '30');
-    if ($days <= 0) return 'No deadline set';
-    $term = current_term();
-    if ($term === null || empty($term['end_date'])) return 'No term end date set';
-    $deadline = date('Y-m-d', strtotime((string) $term['end_date'] . " +{$days} days"));
-    $label = date('M j, Y', strtotime($deadline));
-    if (grade_deadline_passed()) {
-        return '<span class="badge danger">Grade deadline passed — ' . $label . '</span>';
+    if ($type === 'grade_deadline') {
+        $days = (int) setting('grade_deadline_days', '30');
+        if ($days <= 0 || $term === null || empty($term['end_date'])) return '';
+        $deadline = date('M j, Y', strtotime((string) $term['end_date'] . " +{$days} days"));
+        if (grade_deadline_passed()) {
+            return '<span class="badge danger">Deadline passed — ' . $deadline . '</span>';
+        }
+        $remaining = ceil((strtotime((string) $term['end_date'] . " +{$days} days") - time()) / 86400);
+        return '<span class="badge warning">' . $remaining . ' day(s) left — ' . $deadline . '</span>';
     }
-    $remaining = ceil((strtotime($deadline) - time()) / 86400);
-    return '<span class="badge warning">Grade deadline: ' . $remaining . ' day(s) left — ' . $label . '</span>';
+    return '';
 }
 
 function enrollment_is_open(?int $yearLevel = null): bool
@@ -548,57 +1248,6 @@ function enrollment_is_open(?int $yearLevel = null): bool
     return $now >= $openDT && $now <= $closeDT;
 }
 
-/**
- * Human-readable status of the enrollment window for a given year level.
- * Returns ['open' => bool, 'message' => string].
- *
- * @return array{open: bool, message: string}
- */
-function enrollment_window_status(int $yearLevel): array
-{
-    $term = current_term();
-    if ($term === null || (int) $term['enrollment_open'] !== 1 || setting('allow_online_enrollment', '1') !== '1') {
-        return ['open' => false, 'message' => 'Online enrollment is currently closed.'];
-    }
-
-    $scheduleCount = fetch_one(
-        'SELECT COUNT(*) AS cnt FROM enrollment_schedules WHERE term_id = :tid',
-        ['tid' => (int) $term['id']]
-    );
-    if ($scheduleCount === null || (int) $scheduleCount['cnt'] === 0) {
-        return ['open' => true, 'message' => 'Enrollment is open.'];
-    }
-
-    $schedule = fetch_one(
-        'SELECT * FROM enrollment_schedules WHERE term_id = :tid AND year_level = :yl LIMIT 1',
-        ['tid' => (int) $term['id'], 'yl' => $yearLevel]
-    );
-    if ($schedule === null) {
-        return ['open' => false, 'message' => 'No enrollment window is set for your year level.'];
-    }
-
-    $now     = new \DateTimeImmutable('now');
-    $openDT  = new \DateTimeImmutable($schedule['open_date']  . ' ' . $schedule['open_time']);
-    $closeDT = new \DateTimeImmutable($schedule['close_date'] . ' ' . $schedule['close_time']);
-
-    if ($now < $openDT) {
-        return [
-            'open'    => false,
-            'message' => 'Your enrollment window opens on ' . $openDT->format('F j, Y \a\t g:i A') . '.',
-        ];
-    }
-    if ($now > $closeDT) {
-        return [
-            'open'    => false,
-            'message' => 'Your enrollment window closed on ' . $closeDT->format('F j, Y \a\t g:i A') . '.',
-        ];
-    }
-    return [
-        'open'    => true,
-        'message' => 'Enrollment is open until ' . $closeDT->format('F j, Y \a\t g:i A') . '.',
-    ];
-}
-
 function page_title_suffix(): string
 {
     return setting('system_name', 'E-EnrollSys');
@@ -612,6 +1261,7 @@ function render_page(string $pageTitle, string $activePage, string $content, arr
     $show_sidebar = $extra['show_sidebar'] ?? true;
     $breadcrumbs = $extra['breadcrumbs'] ?? [];
     $modals = $extra['modals'] ?? [];
+    $extra_js = $extra['extra_js'] ?? '';
     include __DIR__ . '/template.php';
 }
 
@@ -633,96 +1283,27 @@ function generate_student_number(): string
 
 function parse_numeric_grade(?string $grade): ?float
 {
-    if ($grade === null) {
-        return null;
-    }
-
-    $grade = strtoupper(trim($grade));
-    if ($grade === '' || !is_numeric($grade)) {
-        return null;
-    }
-
-    return (float) $grade;
+    return GradingEngine::parseNumeric($grade);
 }
 
 function grade_is_passing(?string $grade): bool
 {
-    if ($grade === null) {
-        return false;
-    }
-
-    $normalized = strtoupper(trim($grade));
-    if (in_array($normalized, ['P', 'PASSED', 'S'], true)) {
-        return true;
-    }
-
-    if (in_array($normalized, ['INC', 'DRP', 'DROP', 'FAILED', 'W'], true)) {
-        return false;
-    }
-
-    $numeric = parse_numeric_grade($normalized);
-    if ($numeric === null) {
-        return false;
-    }
-
-    return $numeric > 0 && $numeric <= 3.0;
+    return GradingEngine::isPassing($grade);
 }
 
 function grade_is_blocking(?string $grade): bool
 {
-    if ($grade === null) {
-        return true;
-    }
-
-    $normalized = strtoupper(trim($grade));
-    if (in_array($normalized, ['INC', 'DRP', 'DROP', 'FAILED', '5', '5.0', 'W'], true)) {
-        return true;
-    }
-
-    $numeric = parse_numeric_grade($normalized);
-    if ($numeric === null) {
-        return !in_array($normalized, ['P', 'PASSED', 'S'], true);
-    }
-
-    return $numeric > 3.0;
+    return GradingEngine::isBlocking($grade);
 }
 
 function student_grade_lookup(int $studentId): array
 {
-    $rows = fetch_all(
-        'SELECT subject_id, final_grade, MAX(created_at) AS latest_created_at
-         FROM student_subjects
-         WHERE student_id = :student_id
-         GROUP BY subject_id, final_grade
-         ORDER BY latest_created_at DESC',
-        ['student_id' => $studentId]
-    );
-
-    $lookup = [];
-    foreach ($rows as $row) {
-        $subjectId = (int) $row['subject_id'];
-        if (!array_key_exists($subjectId, $lookup)) {
-            $lookup[$subjectId] = $row['final_grade'];
-        }
-    }
-
-    return $lookup;
+    return GradingEngine::studentGradeLookup($studentId);
 }
 
 function student_is_irregular(int $studentId): bool
 {
-    $rows = fetch_all(
-        'SELECT final_grade FROM student_subjects WHERE student_id = :student_id AND final_grade IS NOT NULL',
-        ['student_id' => $studentId]
-    );
-
-    foreach ($rows as $row) {
-        if (grade_is_blocking($row['final_grade'])) {
-            return true;
-        }
-    }
-
-    return false;
+    return GradingEngine::isIrregular($studentId);
 }
 
 function student_status_recommendation(int $studentId): string
@@ -803,15 +1384,22 @@ function regular_offerings_for_student(int $studentId, int $termId, int $section
 
     $targets = get_student_program_targets($student);
     return fetch_all(
-         'SELECT o.*, sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units, sub.lec_credit, sub.lab_credit,
+         'SELECT o.*,
+                COALESCE(sc.sched_code, o.sched_code) AS sched_code,
+                COALESCE(cs.day, o.day_of_week) AS day_of_week,
+                COALESCE(cs.time_range, o.time_range) AS time_range,
+                COALESCE(cs.room, o.room) AS room,
+                sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units, sub.lec_credit, sub.lab_credit,
                 pc.curriculum_id, pc.prerequisite_subject_id,
                 sec.section_name, sec.year_level,
                 CONCAT(COALESCE(st.full_name, "TBA")) AS instructor_name
          FROM section_subject_offerings o
+         LEFT JOIN schedule_codes sc ON sc.offering_id = o.id
+         LEFT JOIN class_schedules cs ON cs.schedule_code_id = sc.id
          INNER JOIN subjects sub ON sub.subject_id = o.subject_id
          INNER JOIN program_curriculum pc ON pc.curriculum_id = o.curriculum_id
          INNER JOIN sections sec ON sec.id = o.section_id
-         LEFT JOIN staff st ON st.staff_id = o.instructor_id
+         LEFT JOIN staff st ON st.staff_id = COALESCE(cs.instructor_id, o.instructor_id)
          WHERE o.term_id = :term_id
            AND o.section_id = :section_id
            AND pc.program_id = :program_id
@@ -837,15 +1425,22 @@ function irregular_offerings_for_student(int $studentId, int $termId): array
 
     $gradeLookup = student_grade_lookup($studentId);
     $rows = fetch_all(
-         'SELECT o.*, sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units, sub.lec_credit, sub.lab_credit,
+         'SELECT o.*,
+                COALESCE(sc.sched_code, o.sched_code) AS sched_code,
+                COALESCE(cs.day, o.day_of_week) AS day_of_week,
+                COALESCE(cs.time_range, o.time_range) AS time_range,
+                COALESCE(cs.room, o.room) AS room,
+                sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units, sub.lec_credit, sub.lab_credit,
                 pc.curriculum_id, pc.prerequisite_subject_id, pc.year_level AS curriculum_year_level,
                 sec.section_name, sec.year_level,
                 CONCAT(COALESCE(st.full_name, "TBA")) AS instructor_name
          FROM section_subject_offerings o
+         LEFT JOIN schedule_codes sc ON sc.offering_id = o.id
+         LEFT JOIN class_schedules cs ON cs.schedule_code_id = sc.id
          INNER JOIN subjects sub ON sub.subject_id = o.subject_id
          INNER JOIN program_curriculum pc ON pc.curriculum_id = o.curriculum_id
          INNER JOIN sections sec ON sec.id = o.section_id
-         LEFT JOIN staff st ON st.staff_id = o.instructor_id
+         LEFT JOIN staff st ON st.staff_id = COALESCE(cs.instructor_id, o.instructor_id)
          WHERE o.term_id = :term_id
            AND pc.program_id = :program_id
          ORDER BY pc.year_level, sub.subject_code',
@@ -1110,26 +1705,28 @@ function create_enrollment_request_draft(int $studentId, int $termId, int $secti
 function enrollment_request_items(int $requestId): array
 {
     return fetch_all(
-        'SELECT eri.*, o.section_id, o.curriculum_id, o.subject_id, sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units, sub.lec_credit, sub.lab_credit,
+        'SELECT eri.*, o.section_id, o.curriculum_id, o.subject_id,
+                COALESCE(sc.sched_code, o.sched_code) AS sched_code,
+                sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units, sub.lec_credit, sub.lab_credit,
                 pc.prerequisite_subject_id,
-                sec.section_name, sec.year_level,
-                o.day_of_week, o.time_range, o.room,
-                CONCAT(COALESCE(st.full_name, "TBA")) AS instructor_name
-         FROM enrollment_request_items eri
+                 sec.section_name, sec.year_level,
+                 cs.start_time, cs.end_time,
+                 COALESCE(cs.day, o.day_of_week) AS day_of_week,
+                 COALESCE(cs.time_range, o.time_range) AS time_range,
+                 COALESCE(cs.room, o.room) AS room,
+                 CONCAT(COALESCE(st.full_name, "TBA")) AS instructor_name
+          FROM enrollment_request_items eri
          INNER JOIN section_subject_offerings o ON o.id = eri.offering_id
+         LEFT JOIN schedule_codes sc ON sc.offering_id = o.id
+         LEFT JOIN class_schedules cs ON cs.schedule_code_id = sc.id
          INNER JOIN subjects sub ON sub.subject_id = o.subject_id
          INNER JOIN program_curriculum pc ON pc.curriculum_id = o.curriculum_id
          INNER JOIN sections sec ON sec.id = o.section_id
-         LEFT JOIN staff st ON st.staff_id = o.instructor_id
+         LEFT JOIN staff st ON st.staff_id = COALESCE(cs.instructor_id, o.instructor_id)
          WHERE eri.request_id = :request_id
          ORDER BY sub.subject_code',
         ['request_id' => $requestId]
     );
-}
-
-function request_student_department_filter_sql(string $alias = 'p'): string
-{
-    return "$alias.department_id";
 }
 
 function save_grade(int $studentSubjectId, string $grade, int $instructorId): void
@@ -1140,38 +1737,13 @@ function save_grade(int $studentSubjectId, string $grade, int $instructorId): vo
         return;
     }
 
-    if (grade_deadline_passed()) {
-        flash('error', 'The grade submission deadline has passed. Contact the registrar to submit grades.');
-        return;
-    }
+    // Use the final grading period
+    $finalPeriod = GradingEngine::getGradingPeriod('final');
+    $periodId = $finalPeriod ? (int) $finalPeriod['id'] : 2;
 
-    execute_sql(
-        'UPDATE student_subjects SET final_grade = :grade, updated_at = NOW() WHERE id = :id',
-        ['grade' => $grade, 'id' => $studentSubjectId]
-    );
-
-    $existing = fetch_one(
-        'SELECT id FROM grades WHERE student_id = :student_id AND offering_id = :offering_id LIMIT 1',
-        ['student_id' => (int) $studentSubject['student_id'], 'offering_id' => (int) $studentSubject['offering_id']]
-    );
-
-    if ($existing) {
-        execute_sql(
-            'UPDATE grades SET grade = :grade, instructor_id = :instructor_id, updated_at = NOW() WHERE id = :id',
-            ['grade' => $grade, 'instructor_id' => $instructorId, 'id' => (int) $existing['id']]
-        );
-    } else {
-        execute_sql(
-            'INSERT INTO grades (student_id, curriculum_id, offering_id, grade, instructor_id, created_at, updated_at)
-             VALUES (:student_id, :curriculum_id, :offering_id, :grade, :instructor_id, NOW(), NOW())',
-            [
-                'student_id' => (int) $studentSubject['student_id'],
-                'curriculum_id' => (int) $studentSubject['curriculum_id'],
-                'offering_id' => (int) $studentSubject['offering_id'],
-                'grade' => $grade,
-                'instructor_id' => $instructorId,
-            ]
-        );
+    $result = GradingEngine::saveDraft($studentSubjectId, $periodId, $grade, $instructorId);
+    if (!$result['success']) {
+        flash('error', $result['message']);
     }
 }
 
@@ -1197,6 +1769,28 @@ function sync_student_section(int $studentId, int $sectionId): void
         'section_id' => $sectionId,
         'student_id' => $studentId,
     ]);
+}
+
+/**
+ * Reset all instructor assignments for a given term.
+ * Clears instructor_id from both section_subject_offerings and class_schedules.
+ */
+function reset_instructor_assignments_for_term(int $termId): void
+{
+    // Clear instructor_id from class_schedules for this term's offerings
+    execute_sql(
+        "UPDATE class_schedules cs
+         INNER JOIN section_subject_offerings o ON o.sched_code = cs.schedule_code
+         SET cs.instructor_id = NULL
+         WHERE o.term_id = :term_id",
+        ['term_id' => $termId]
+    );
+
+    // Clear legacy instructor_id on section_subject_offerings for this term
+    execute_sql(
+        "UPDATE section_subject_offerings SET instructor_id = NULL WHERE term_id = :term_id",
+        ['term_id' => $termId]
+    );
 }
 
 
@@ -1265,7 +1859,7 @@ function send_enrollment_notification(int $studentId, string $subject, string $b
     if ($fromEmail === '' && setting('smtp_host', '') === '') {
         return;
     }
-    $student = fetch_one('SELECT u.email, s.full_name FROM users u LEFT JOIN students s ON s.id = u.student_id WHERE u.student_id = :id LIMIT 1', ['id' => $studentId]);
+    $student = fetch_one('SELECT u.email, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name FROM users u LEFT JOIN students s ON s.id = u.student_id WHERE u.student_id = :id LIMIT 1', ['id' => $studentId]);
     if ($student && !empty($student['email'])) {
         $portalName = setting('system_name', 'E-EnrollSys');
         $htmlBody = '<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:20px;">
@@ -1278,17 +1872,42 @@ function send_enrollment_notification(int $studentId, string $subject, string $b
     }
 }
 
-function notify_staff_by_role(string $roleName, string $subject, string $body): void
+function get_request_department_id(int $requestId, string $type = 'enrollment'): ?int
+{
+    if ($type === 'add_drop') {
+        $row = fetch_one(
+            'SELECT p.department_id FROM add_drop_requests adr
+             INNER JOIN students s ON s.id = adr.student_id
+             INNER JOIN programs p ON p.programs_id = s.program_id
+             WHERE adr.id = :id',
+            ['id' => $requestId]
+        );
+    } else {
+        $row = fetch_one(
+            'SELECT p.department_id FROM enrollment_requests er
+             INNER JOIN students s ON s.id = er.student_id
+             INNER JOIN programs p ON p.programs_id = s.program_id
+             WHERE er.id = :id',
+            ['id' => $requestId]
+        );
+    }
+    return $row ? (int) $row['department_id'] : null;
+}
+
+function notify_staff_by_role(string $roleName, string $subject, string $body, ?int $deptId = null): void
 {
     try {
-        $staffRows = fetch_all(
-            'SELECT s.staff_id FROM staff s
+        $sql = 'SELECT s.staff_id FROM staff s
              INNER JOIN users u ON u.users_id = s.users_id
              INNER JOIN user_roles ur ON ur.user_id = u.users_id
              INNER JOIN roles r ON r.roles_id = ur.role_id
-             WHERE r.role_name = :role AND s.status = "active"',
-            ['role' => $roleName]
-        );
+             WHERE r.role_name = :role AND s.status = "active"';
+        $params = ['role' => $roleName];
+        if ($deptId !== null) {
+            $sql .= ' AND s.dept_id = :dept_id';
+            $params['dept_id'] = $deptId;
+        }
+        $staffRows = fetch_all($sql, $params);
         foreach ($staffRows as $sr) {
             execute_sql(
                 'INSERT IGNORE INTO staff_notifications (staff_id, subject, body, is_read, created_at)
@@ -1352,7 +1971,8 @@ function approve_request_as_adviser(int $requestId, string $remark = ''): void
 
     notify_staff_by_role('department_chair',
         'New Enrollment Request Awaiting Your Review',
-        'A student enrollment request has been approved by the adviser and is now awaiting your review.'
+        'A student enrollment request has been approved by the adviser and is now awaiting your review.',
+        get_request_department_id($requestId, 'enrollment')
     );
 }
 
@@ -1416,6 +2036,19 @@ function reject_request(int $requestId, string $stage, string $remark): void
           . "You may resubmit a new enrollment request with the necessary corrections.\n\n"
           . "If you have questions, please contact the " . ucfirst($stage) . " office.";
 
+    $actorName = '';
+    $actorUserId = (int) ($_SESSION['user_id'] ?? 0);
+    if ($actorUserId > 0) {
+        $actor = fetch_one(
+            'SELECT COALESCE(st.full_name, u.username) AS name FROM users u LEFT JOIN staff st ON st.users_id = u.users_id WHERE u.users_id = :uid',
+            ['uid' => $actorUserId]
+        );
+        $actorName = $actor ? $actor['name'] : '';
+    }
+    if ($actorName !== '') {
+        $body .= "\n\nProcessed by: {$actorName}";
+    }
+
     send_enrollment_notification((int)$req['student_id'],
         'Enrollment Request Rejected',
         $body
@@ -1426,6 +2059,7 @@ function cancel_request(int $requestId): void
 {
     $req = fetch_one('SELECT workflow_status FROM enrollment_requests WHERE id = :id', ['id' => $requestId]);
     execute_sql('UPDATE enrollment_requests SET workflow_status = "cancelled", updated_at = NOW() WHERE id = :id', ['id' => $requestId]);
+    execute_sql('DELETE FROM enrollment_request_items WHERE request_id = :rid', ['rid' => $requestId]);
     log_audit($requestId, 'student_cancel', 'student', $req ? $req['workflow_status'] : null, 'cancelled', null);
 }
 
@@ -1435,7 +2069,7 @@ function forward_to_cashier(int $requestId): void
     if (!$req || $req['workflow_status'] !== 'chair_approved') return;
 
     execute_sql(
-        'UPDATE enrollment_requests SET workflow_status = "registrar_forwarded", updated_at = NOW() WHERE id = :id',
+        'UPDATE enrollment_requests SET workflow_status = "registrar_forwarded", payment_status = "unpaid", updated_at = NOW() WHERE id = :id',
         ['id' => $requestId]
     );
     log_audit($requestId, 'registrar_forward', 'registrar', 'chair_approved', 'registrar_forwarded', null);
@@ -1456,7 +2090,7 @@ function cashier_approve_request(int $requestId): void
     if (!$req || $req['workflow_status'] !== 'registrar_forwarded') return;
 
     execute_sql(
-        'UPDATE enrollment_requests SET workflow_status = "cashier_approved", cashier_processed_at = NOW(), cashier_processed_by = :uid, updated_at = NOW() WHERE id = :id',
+        'UPDATE enrollment_requests SET workflow_status = "cashier_approved", payment_status = "paid", cashier_processed_at = NOW(), cashier_processed_by = :uid, updated_at = NOW() WHERE id = :id',
         ['id' => $requestId, 'uid' => (int) ($_SESSION['user_id'] ?? 0)]
     );
     log_audit($requestId, 'cashier_approve', 'cashier', 'registrar_forwarded', 'cashier_approved', null);
@@ -1491,7 +2125,7 @@ function finalize_request_by_registrar(int $requestId, int $sectionId): bool
     try {
         execute_sql(
             'UPDATE enrollment_requests
-             SET registrar_status = "approved", workflow_status = "registrar_approved", registrar_section_id = :section_id, registrar_processed_at = NOW(), registrar_processed_by = :user_id, updated_at = NOW()
+             SET registrar_status = "approved", workflow_status = "registrar_approved", payment_status = COALESCE(payment_status, "unpaid"), registrar_section_id = :section_id, registrar_processed_at = NOW(), registrar_processed_by = :user_id, updated_at = NOW()
              WHERE id = :id',
             ['section_id' => $sectionId, 'id' => $requestId, 'user_id' => (int) ($_SESSION['user_id'] ?? 0)]
         );
@@ -1566,7 +2200,8 @@ function student_terms_with_enrollment(int $studentId): array
 function registration_form_data(int $studentId, int $termId): array
 {
     $student = fetch_one(
-        'SELECT s.*, p.program_code, p.program_name, sec.section_name, ay.year_label, t.semester
+        'SELECT s.*, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name,
+                p.program_code, p.program_name, sec.section_name, ay.year_label, t.semester
          FROM students s
          INNER JOIN programs p ON p.programs_id = s.program_id
          LEFT JOIN sections sec ON sec.id = s.section_id
@@ -1578,10 +2213,13 @@ function registration_form_data(int $studentId, int $termId): array
 
     $rows = fetch_all(
         'SELECT ss.*, sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS units, sub.lab_credit,
-                o.day_of_week, o.time_range, o.room,
+                sc.sched_code,
+                cs.day, cs.time_range, cs.room,
                 sec.section_name
          FROM student_subjects ss
          INNER JOIN section_subject_offerings o ON o.id = ss.offering_id
+         LEFT JOIN schedule_codes sc ON sc.offering_id = o.id
+         LEFT JOIN class_schedules cs ON cs.schedule_code_id = sc.id
          INNER JOIN subjects sub ON sub.subject_id = ss.subject_id
          INNER JOIN sections sec ON sec.id = ss.section_id
          WHERE ss.student_id = :student_id AND ss.term_id = :term_id
@@ -1615,7 +2253,7 @@ function registration_form_data(int $studentId, int $termId): array
 function cog_data(int $studentId, ?int $termId = null): array
 {
     $student = fetch_one(
-        'SELECT s.*, p.program_code, p.program_name FROM students s INNER JOIN programs p ON p.programs_id = s.program_id WHERE s.id = :id',
+        'SELECT s.*, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, p.program_code, p.program_name FROM students s INNER JOIN programs p ON p.programs_id = s.program_id WHERE s.id = :id',
         ['id' => $studentId]
     ) ?? [];
 
@@ -1627,48 +2265,33 @@ function cog_data(int $studentId, ?int $termId = null): array
     }
 
     $rows = fetch_all(
-        'SELECT ss.final_grade, ss.units,
+        'SELECT ss.final_grade, ss.midterm_grade, ss.units,
                 sub.subject_code, sub.subject_description,
                 t.semester, ay.year_label
          FROM student_subjects ss
          INNER JOIN subjects sub ON sub.subject_id = ss.subject_id
          INNER JOIN academic_terms t ON t.id = ss.term_id
          INNER JOIN academic_years ay ON ay.id = t.academic_year_id
-         WHERE ss.student_id = :student_id AND ss.final_grade IS NOT NULL' . $filter . '
+         WHERE ss.student_id = :student_id AND (ss.final_grade IS NOT NULL OR ss.midterm_grade IS NOT NULL)' . $filter . '
          ORDER BY ay.start_year DESC, FIELD(t.semester, "1", "2", "mid"), sub.subject_code',
         $params
     );
 
-    $totalUnits = 0.0;
-    $passingUnits = 0.0;
-    $weightedSum = 0.0;
-    foreach ($rows as $row) {
-        $units = (float) $row['units'];
-        $totalUnits += $units;
-        if (grade_is_passing((string) $row['final_grade'])) {
-            $passingUnits += $units;
-        }
-        $numeric = parse_numeric_grade((string) $row['final_grade']);
-        if ($numeric !== null) {
-            $weightedSum += $numeric * $units;
-        }
-    }
-
-    $average = $totalUnits > 0 ? $weightedSum / $totalUnits : 0.0;
+    $gwaResult = GradingEngine::computeGwa($rows);
 
     return [
         'student' => $student,
         'rows' => $rows,
-        'total_units' => $totalUnits,
-        'credit_units' => $passingUnits,
-        'average' => $average,
+        'total_units' => $gwaResult['units_total'],
+        'credit_units' => $gwaResult['units_earned'],
+        'average' => $gwaResult['gwa'] ?? 0.0,
     ];
 }
 
 function checklist_data(int $studentId): array
 {
     $student = fetch_one(
-        'SELECT s.*, p.program_code, p.program_name FROM students s INNER JOIN programs p ON p.programs_id = s.program_id WHERE s.id = :id',
+        'SELECT s.*, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, p.program_code, p.program_name FROM students s INNER JOIN programs p ON p.programs_id = s.program_id WHERE s.id = :id',
         ['id' => $studentId]
     ) ?? [];
 
@@ -1685,21 +2308,11 @@ function checklist_data(int $studentId): array
 
     foreach ($rows as &$row) {
         $row['grade'] = $gradeLookup[(int) $row['subject_id']] ?? null;
-        $row['status'] = grade_is_passing($row['grade']) ? 'Completed' : ($row['grade'] ? 'Incomplete / Failed' : 'Pending');
+        $row['status'] = GradingEngine::isPassing($row['grade']) ? 'Completed' : ($row['grade'] ? 'Incomplete / Failed' : 'Pending');
     }
     unset($row);
 
     return ['student' => $student, 'rows' => $rows];
-}
-
-function badge_class(string $type): string
-{
-    return match ($type) {
-        'success' => 'badge success',
-        'warning' => 'badge warning',
-        'danger', 'error' => 'badge danger',
-        default => 'badge',
-    };
 }
 
 function workflow_badge_class(string $status): string
@@ -1822,13 +2435,18 @@ function add_drop_request_items(int $studentId, int $termId, string $workflowSta
 {
     $sql = 'SELECT adr.*,
                     sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS subject_units,
-                    sec.section_name, sec.year_level, o.day_of_week, o.time_range,
+                    sec.section_name, sec.year_level,
+                    COALESCE(cs.day, o.day_of_week) AS day_of_week,
+                    COALESCE(cs.time_range, o.time_range) AS time_range,
+                    COALESCE(sc.sched_code, o.sched_code) AS sched_code,
                     CONCAT(COALESCE(st.full_name, "TBA")) AS instructor_name
              FROM add_drop_requests adr
              LEFT JOIN subjects sub ON sub.subject_id = adr.subject_id
              LEFT JOIN section_subject_offerings o ON o.id = adr.offering_id
+             LEFT JOIN schedule_codes sc ON sc.offering_id = o.id
+             LEFT JOIN class_schedules cs ON cs.schedule_code_id = sc.id
              LEFT JOIN sections sec ON sec.id = adr.section_id
-             LEFT JOIN staff st ON st.staff_id = o.instructor_id
+             LEFT JOIN staff st ON st.staff_id = COALESCE(cs.instructor_id, o.instructor_id)
              WHERE adr.student_id = :sid AND adr.term_id = :tid';
     $params = ['sid' => $studentId, 'tid' => $termId];
     if ($workflowStatus !== '') {
@@ -1858,7 +2476,8 @@ function approve_add_drop_as_adviser(int $requestId, string $remark = ''): void
     );
     notify_staff_by_role('department_chair',
         'Add/Drop Request Awaiting Your Review',
-        'A student add/drop request has been approved by the adviser and is awaiting your review.'
+        'A student add/drop request has been approved by the adviser and is awaiting your review.',
+        get_request_department_id($requestId, 'add_drop')
     );
 }
 
@@ -1921,7 +2540,7 @@ function finalize_add_drop_as_registrar(int $requestId, ?int $sectionId = null):
             }
         } elseif ($req['action_type'] === 'drop' && $req['subject_id'] > 0) {
             execute_sql(
-                'UPDATE student_subjects SET enrollment_status = "dropped", updated_at = NOW()
+                'UPDATE student_subjects SET enrollment_status = "dropped", final_grade = NULL, updated_at = NOW()
                  WHERE student_id = :sid AND term_id = :tid AND subject_id = :subid AND enrollment_status = "enrolled"',
                 ['sid' => (int) $req['student_id'], 'tid' => (int) $req['term_id'], 'subid' => (int) $req['subject_id']]
             );
@@ -1971,7 +2590,9 @@ function reject_add_drop_request(int $requestId, string $stage, string $remark):
 
 function cancel_add_drop_request(int $requestId): void
 {
+    $req = fetch_one('SELECT workflow_status FROM add_drop_requests WHERE id = :id', ['id' => $requestId]);
     execute_sql('UPDATE add_drop_requests SET workflow_status = "cancelled", updated_at = NOW() WHERE id = :id', ['id' => $requestId]);
+    log_audit($requestId, 'student_cancel_add_drop', 'student', $req ? $req['workflow_status'] : null, 'cancelled', null);
 }
 
 // ── CSRF helpers ────────────────────────────────────────────────────────────
@@ -1998,4 +2619,277 @@ function verify_csrf(): void
         http_response_code(403);
         exit('Invalid CSRF token. Please go back and try again.');
     }
+}
+
+// ── New Class Schedule Management ────────────────────────────────────────────
+
+function generate_class_schedule_code(int $termId, int $programId): string
+{
+    $term = fetch_one(
+        'SELECT ay.start_year, t.semester
+         FROM academic_terms t
+         INNER JOIN academic_years ay ON ay.id = t.academic_year_id
+         WHERE t.id = :id',
+        ['id' => $termId]
+    );
+    if ($term === null) return '';
+
+    $program = fetch_one(
+        'SELECT d.department_code FROM programs p
+         INNER JOIN departments d ON d.dept_id = p.department_id
+         WHERE p.programs_id = :id',
+        ['id' => $programId]
+    );
+    if ($program === null) return '';
+
+    $prefix = $term['start_year']
+        . semester_to_digit((string) $term['semester'])
+        . dept_to_sched_digit((string) $program['department_code']);
+
+    $existing = fetch_all(
+        'SELECT schedule_code FROM class_schedules WHERE schedule_code LIKE :pattern',
+        ['pattern' => $prefix . '%']
+    );
+    $maxSeq = 0;
+    foreach ($existing as $row) {
+        $num = (int) substr((string) $row['schedule_code'], 6);
+        if ($num > $maxSeq) $maxSeq = $num;
+    }
+
+    return $prefix . str_pad((string) ($maxSeq + 1), 3, '0', STR_PAD_LEFT);
+}
+
+function find_class_schedule_conflicts(array $data, int $excludeId = 0): array
+{
+    $sectionId  = (int) ($data['section_id'] ?? 0);
+    $instructorId = !empty($data['instructor_id']) ? (int) $data['instructor_id'] : null;
+    $day        = trim((string) ($data['day'] ?? ''));
+    $start      = trim((string) ($data['time_start'] ?? ''));
+    $end        = trim((string) ($data['time_end'] ?? ''));
+    $room       = trim((string) ($data['room'] ?? ''));
+    $termId     = (int) ($data['term_id'] ?? 0);
+
+    if ($day === '' || $start === '' || $end === '' || time_to_minutes($start) >= time_to_minutes($end)) {
+        return [];
+    }
+
+    $conflicts = [];
+
+    if ($sectionId > 0) {
+        $sec = fetch_one(
+            'SELECT p.program_code, sec.year_level, sec.section_name
+             FROM sections sec
+             INNER JOIN programs p ON p.programs_id = sec.program_id
+             WHERE sec.id = :id',
+            ['id' => $sectionId]
+        );
+        $sectionLabel = $sec ? ($sec['program_code'] . ' ' . $sec['year_level'] . $sec['section_name']) : 'Section';
+
+        $rows = fetch_all(
+            'SELECT sub.subject_code, cs.day, cs.start_time, cs.end_time
+             FROM class_schedules cs
+             INNER JOIN subjects sub ON sub.subject_id = cs.subject_id
+             WHERE cs.id <> :exclude
+               AND cs.section_id = :section_id
+               AND cs.day = :day
+               AND cs.term_id = :term_id
+               AND cs.status NOT IN ("cancelled","rejected")
+               AND cs.start_time IS NOT NULL AND cs.end_time IS NOT NULL
+               AND cs.start_time < :end_time AND cs.end_time > :start_time',
+            [
+                'exclude'     => $excludeId,
+                'section_id'  => $sectionId,
+                'day'         => $day,
+                'term_id'     => $termId,
+                'end_time'    => $end,
+                'start_time'  => $start,
+            ]
+        );
+        foreach ($rows as $r) {
+            $conflicts[] = $sectionLabel . ' already has ' . $r['subject_code']
+                . ' on ' . $r['day'] . ' from '
+                . format_time_12h((string) $r['start_time']) . ' – ' . format_time_12h((string) $r['end_time']) . '.';
+        }
+    }
+
+    if ($instructorId > 0) {
+        $rows = fetch_all(
+            'SELECT st.full_name, cs.day, cs.start_time, cs.end_time,
+                    sub.subject_code, sec.section_name, p.program_code
+             FROM class_schedules cs
+             INNER JOIN subjects sub ON sub.subject_id = cs.subject_id
+             INNER JOIN sections sec ON sec.id = cs.section_id
+             INNER JOIN programs p ON p.programs_id = sec.program_id
+             LEFT JOIN staff st ON st.staff_id = cs.instructor_id
+             WHERE cs.id <> :exclude
+               AND cs.instructor_id = :instructor_id
+               AND cs.day = :day
+               AND cs.term_id = :term_id
+               AND cs.status NOT IN ("cancelled","rejected")
+               AND cs.start_time IS NOT NULL AND cs.end_time IS NOT NULL
+               AND cs.start_time < :end_time AND cs.end_time > :start_time',
+            [
+                'exclude'      => $excludeId,
+                'instructor_id' => $instructorId,
+                'day'          => $day,
+                'term_id'      => $termId,
+                'end_time'     => $end,
+                'start_time'   => $start,
+            ]
+        );
+        foreach ($rows as $r) {
+            $conflicts[] = ($r['full_name'] ?? 'Instructor')
+                . ' is already scheduled on ' . $r['day'] . ' '
+                . format_time_12h((string) $r['start_time']) . ' – ' . format_time_12h((string) $r['end_time'])
+                . ' (' . $r['subject_code'] . ', ' . $r['program_code'] . ' ' . $r['section_name'] . ').';
+        }
+    }
+
+    if ($room !== '') {
+        $rows = fetch_all(
+            'SELECT cs.day, cs.start_time, cs.end_time,
+                    sub.subject_code, sec.section_name, p.program_code
+             FROM class_schedules cs
+             INNER JOIN subjects sub ON sub.subject_id = cs.subject_id
+             INNER JOIN sections sec ON sec.id = cs.section_id
+             INNER JOIN programs p ON p.programs_id = sec.program_id
+             WHERE cs.id <> :exclude
+               AND cs.room = :room AND cs.room IS NOT NULL AND cs.room <> ""
+               AND cs.day = :day
+               AND cs.term_id = :term_id
+               AND cs.status NOT IN ("cancelled","rejected")
+               AND cs.start_time IS NOT NULL AND cs.end_time IS NOT NULL
+               AND cs.start_time < :end_time AND cs.end_time > :start_time',
+            [
+                'exclude'    => $excludeId,
+                'room'       => $room,
+                'day'        => $day,
+                'term_id'    => $termId,
+                'end_time'   => $end,
+                'start_time' => $start,
+            ]
+        );
+        foreach ($rows as $r) {
+            $conflicts[] = 'Room ' . $room . ' is already booked on ' . $r['day'] . ' '
+                . format_time_12h((string) $r['start_time']) . ' – ' . format_time_12h((string) $r['end_time'])
+                . ' (' . $r['subject_code'] . ', ' . $r['program_code'] . ' ' . $r['section_name'] . ').';
+        }
+    }
+
+    return $conflicts;
+}
+
+function get_schedule_with_details(int $scheduleId): ?array
+{
+    return fetch_one(
+        'SELECT cs.*,
+                sub.subject_code, sub.subject_description,
+                (sub.lec_credit + sub.lab_credit) AS units,
+                sec.section_name, sec.year_level,
+                p.program_code, p.program_name,
+                st.full_name AS instructor_name,
+                d.department_code, d.department_name,
+                t.semester, ay.year_label, ay.start_year
+         FROM class_schedules cs
+         INNER JOIN subjects sub ON sub.subject_id = cs.subject_id
+         INNER JOIN sections sec ON sec.id = cs.section_id
+         INNER JOIN programs p ON p.programs_id = sec.program_id
+         INNER JOIN departments d ON d.dept_id = p.department_id
+         LEFT JOIN staff st ON st.staff_id = cs.instructor_id
+         INNER JOIN academic_terms t ON t.id = cs.term_id
+         INNER JOIN academic_years ay ON ay.id = t.academic_year_id
+         WHERE cs.id = :id',
+        ['id' => $scheduleId]
+    );
+}
+
+function get_class_schedules_for_section(int $sectionId, int $termId): array
+{
+    return fetch_all(
+        'SELECT cs.*, sub.subject_code, sub.subject_description,
+                (sub.lec_credit + sub.lab_credit) AS units,
+                st.full_name AS instructor_name,
+                sec.section_name, sec.year_level,
+                p.program_code
+         FROM class_schedules cs
+         INNER JOIN subjects sub ON sub.subject_id = cs.subject_id
+         INNER JOIN sections sec ON sec.id = cs.section_id
+         INNER JOIN programs p ON p.programs_id = sec.program_id
+         LEFT JOIN staff st ON st.staff_id = cs.instructor_id
+         WHERE cs.section_id = :section_id AND cs.term_id = :term_id
+           AND cs.status NOT IN ("cancelled")
+         ORDER BY sub.subject_code, FIELD(cs.day, "Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"), cs.start_time',
+        ['section_id' => $sectionId, 'term_id' => $termId]
+    );
+}
+
+function find_student_schedule_conflicts(array $scheduleIds, int $excludeScheduleId = 0): array
+{
+    if (count($scheduleIds) < 2) return [];
+
+    $placeholders = implode(',', array_fill(0, count($scheduleIds), '?'));
+    $db = db();
+    $stmt = $db->prepare(
+        "SELECT cs.id, cs.day, cs.start_time, cs.end_time, cs.room,
+                sub.subject_code, sec.section_name, p.program_code
+         FROM class_schedules cs
+         INNER JOIN subjects sub ON sub.subject_id = cs.subject_id
+         INNER JOIN sections sec ON sec.id = cs.section_id
+         INNER JOIN programs p ON p.programs_id = sec.program_id
+         WHERE cs.id IN ($placeholders)
+           AND cs.day IS NOT NULL AND cs.start_time IS NOT NULL AND cs.end_time IS NOT NULL
+         ORDER BY FIELD(cs.day, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'), cs.start_time"
+    );
+    $stmt->execute($scheduleIds);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $conflicts = [];
+    for ($i = 0; $i < count($rows); $i++) {
+        for ($j = $i + 1; $j < count($rows); $j++) {
+            $a = $rows[$i];
+            $b = $rows[$j];
+            if ($a['id'] == $excludeScheduleId || $b['id'] == $excludeScheduleId) continue;
+            if ($a['day'] !== $b['day']) continue;
+            $aStart = time_to_minutes((string) $a['start_time']);
+            $aEnd   = time_to_minutes((string) $a['end_time']);
+            $bStart = time_to_minutes((string) $b['start_time']);
+            $bEnd   = time_to_minutes((string) $b['end_time']);
+            if ($aStart < $bEnd && $bStart < $aEnd) {
+                $conflicts[] = $a['subject_code'] . ' (' . $a['program_code'] . ' ' . $a['section_name'] . ')'
+                    . ' overlaps with ' . $b['subject_code'] . ' (' . $b['program_code'] . ' ' . $b['section_name'] . ')'
+                    . ' on ' . $a['day'] . ' '
+                    . format_time_12h((string) $a['start_time']) . '–' . format_time_12h((string) $a['end_time'])
+                    . ' vs ' . format_time_12h((string) $b['start_time']) . '–' . format_time_12h((string) $b['end_time']) . '.';
+            }
+        }
+    }
+    return $conflicts;
+}
+
+function schedule_status_badge_class(string $status): string
+{
+    return match ($status) {
+        'draft'     => 'info',
+        'submitted' => 'warning',
+        'approved'  => 'success',
+        'rejected'  => 'danger',
+        'cancelled' => '',
+        default     => 'info',
+    };
+}
+
+function schedule_change_request(int $scheduleId, string $field, mixed $oldVal, mixed $newVal, string $reason, int $requestedBy): bool
+{
+    return execute_sql(
+        'INSERT INTO schedule_change_requests (schedule_id, field_changed, old_value, new_value, reason, requested_by)
+         VALUES (:sid, :field, :old, :new, :reason, :by)',
+        [
+            'sid'    => $scheduleId,
+            'field'  => $field,
+            'old'    => (string) $oldVal,
+            'new'    => (string) $newVal,
+            'reason' => $reason,
+            'by'     => $requestedBy,
+        ]
+    );
 }

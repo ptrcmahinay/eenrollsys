@@ -35,10 +35,55 @@ if (is_post()) {
         if ($deptId <= 0 || $code === '' || $name === '') {
             flash('error', 'Invalid department data.');
         } else {
+            if ($chairId !== null) {
+                $otherDept = fetch_one(
+                    'SELECT dept_id FROM departments WHERE chair_id = :chair_id AND dept_id != :dept_id AND status = "active" LIMIT 1',
+                    ['chair_id' => $chairId, 'dept_id' => $deptId]
+                );
+                if ($otherDept !== null) {
+                    flash('error', 'This staff member is already assigned as chair of another department.');
+                    redirect('registrar/departments.php');
+                }
+            }
+
             execute_sql(
                 'UPDATE departments SET department_code = :code, department_name = :name WHERE dept_id = :id',
                 ['code' => $code, 'name' => $name, 'id' => $deptId]
             );
+
+            $currentDept = fetch_one('SELECT chair_id FROM departments WHERE dept_id = :dept_id', ['dept_id' => $deptId]);
+            $oldChairId = $currentDept ? (int) $currentDept['chair_id'] : null;
+
+            $chairRole = fetch_one("SELECT roles_id FROM roles WHERE role_name = 'department_chair' LIMIT 1");
+            $chairRoleId = $chairRole ? (int) $chairRole['roles_id'] : 0;
+
+            if ($chairRoleId > 0) {
+                if ($oldChairId !== null && $oldChairId !== $chairId) {
+                    $oldUser = fetch_one('SELECT users_id FROM staff WHERE staff_id = :sid', ['sid' => $oldChairId]);
+                    if ($oldUser) {
+                        execute_sql(
+                            'DELETE FROM user_roles WHERE user_id = :uid AND role_id = :rid',
+                            ['uid' => (int) $oldUser['users_id'], 'rid' => $chairRoleId]
+                        );
+                    }
+                }
+
+                if ($chairId !== null) {
+                    $newUser = fetch_one('SELECT users_id FROM staff WHERE staff_id = :sid', ['sid' => $chairId]);
+                    if ($newUser) {
+                        $hasRole = fetch_one(
+                            'SELECT 1 FROM user_roles WHERE user_id = :uid AND role_id = :rid LIMIT 1',
+                            ['uid' => (int) $newUser['users_id'], 'rid' => $chairRoleId]
+                        );
+                        if (!$hasRole) {
+                            execute_sql(
+                                'INSERT INTO user_roles (user_id, role_id) VALUES (:uid, :rid)',
+                                ['uid' => (int) $newUser['users_id'], 'rid' => $chairRoleId]
+                            );
+                        }
+                    }
+                }
+            }
 
             if ($chairId !== null) {
                 execute_sql(
@@ -50,31 +95,12 @@ if (is_post()) {
                     ['dept_id' => $deptId, 'chair_id' => $chairId]
                 );
             }
+            execute_sql(
+                'UPDATE departments SET chair_id = :chair_id WHERE dept_id = :dept_id',
+                ['chair_id' => $chairId, 'dept_id' => $deptId]
+            );
 
             flash('success', 'Department updated.');
-        }
-    }
-
-    if ($action === 'create_section') {
-        $programId  = (int) ($_POST['program_id']   ?? 0);
-        $yearLevel  = (int) ($_POST['year_level']   ?? 1);
-        $sectionName = trim($_POST['section_name']  ?? '');
-        $maxSlots   = ($_POST['max_slots'] ?? '') !== '' ? (int) $_POST['max_slots'] : null;
-
-        if ($programId <= 0 || $sectionName === '') {
-            flash('error', 'Program and section name are required.');
-        } else {
-            execute_sql(
-                'INSERT INTO sections (program_id, year_level, section_name, max_slots, created_at)
-                 VALUES (:program_id, :year_level, :section_name, :max_slots, NOW())',
-                [
-                    'program_id'   => $programId,
-                    'year_level'   => $yearLevel,
-                    'section_name' => $sectionName,
-                    'max_slots'    => $maxSlots,
-                ]
-            );
-            flash('success', 'Section created.');
         }
     }
 
@@ -82,6 +108,8 @@ if (is_post()) {
         $deptId = (int) ($_POST['dept_id'] ?? 0);
         if ($deptId > 0) {
             if (soft_delete('departments', 'dept_id', $deptId)) {
+                execute_sql('UPDATE departments SET chair_id = NULL WHERE dept_id = :did', ['did' => $deptId]);
+                execute_sql('UPDATE staff SET dept_id = NULL WHERE dept_id = :did', ['did' => $deptId]);
                 flash('success', 'Department marked inactive.');
             } else {
                 flash('error', 'Failed to delete department.');
@@ -94,52 +122,9 @@ if (is_post()) {
         if (is_array($ids) && count($ids) > 0) {
             $ph = implode(',', array_fill(0, count($ids), '?'));
             execute_sql("UPDATE departments SET status = 'inactive' WHERE dept_id IN ({$ph})", $ids);
+            execute_sql("UPDATE departments SET chair_id = NULL WHERE dept_id IN ({$ph})", $ids);
+            execute_sql("UPDATE staff SET dept_id = NULL WHERE dept_id IN ({$ph})", $ids);
             flash('success', count($ids) . ' department(s) deleted.');
-        }
-    }
-
-    if ($action === 'delete_section') {
-        $sectionId = (int) ($_POST['section_id'] ?? 0);
-        if ($sectionId > 0) {
-            if (soft_delete('sections', 'id', $sectionId)) {
-                flash('success', 'Section marked inactive.');
-            } else {
-                flash('error', 'Failed to delete section.');
-            }
-        }
-    }
-
-    if ($action === 'update_section') {
-        $sectionId   = (int) ($_POST['section_id'] ?? 0);
-        $programId   = (int) ($_POST['program_id'] ?? 0);
-        $yearLevel   = (int) ($_POST['year_level'] ?? 1);
-        $sectionName = trim($_POST['section_name'] ?? '');
-        $maxSlots    = ($_POST['max_slots'] ?? '') !== '' ? (int) $_POST['max_slots'] : null;
-
-        if ($sectionId <= 0 || $programId <= 0 || $sectionName === '') {
-            flash('error', 'Program, section name, and section ID are required.');
-        } else {
-            execute_sql(
-                'UPDATE sections SET program_id = :program_id, year_level = :year_level,
-                 section_name = :section_name, max_slots = :max_slots WHERE id = :id',
-                [
-                    'program_id'   => $programId,
-                    'year_level'   => $yearLevel,
-                    'section_name' => $sectionName,
-                    'max_slots'    => $maxSlots,
-                    'id'           => $sectionId,
-                ]
-            );
-            flash('success', 'Section updated.');
-        }
-    }
-
-    if ($action === 'bulk_delete_sections') {
-        $ids = $_POST['section_id'] ?? [];
-        if (is_array($ids) && count($ids) > 0) {
-            $ph = implode(',', array_fill(0, count($ids), '?'));
-            execute_sql("UPDATE sections SET status = 'inactive' WHERE id IN ({$ph})", $ids);
-            flash('success', count($ids) . ' section(s) deleted.');
         }
     }
 
@@ -153,44 +138,27 @@ if (is_post()) {
 $departments = fetch_all(
     'SELECT d.*,
             s.full_name AS chair_name,
-            s.staff_id  AS chair_id,
+            d.chair_id,
             (SELECT COUNT(*) FROM programs p WHERE p.department_id = d.dept_id) AS program_count
      FROM departments d
-     LEFT JOIN staff s ON s.dept_id = d.dept_id
-     LEFT JOIN user_roles ur ON ur.user_id = s.users_id
-     LEFT JOIN roles r ON r.roles_id = ur.role_id AND r.role_name = "department_chair"
+     LEFT JOIN staff s ON s.staff_id = d.chair_id
      WHERE d.status = "active"
-     GROUP BY d.dept_id
      ORDER BY d.department_code'
 );
 
-// Sections with program and adviser info
-$sections = fetch_all(
-    'SELECT sec.*,
-            p.program_code, p.program_name,
-            d.department_code,
-            s.full_name AS adviser_name
-     FROM sections sec
-     INNER JOIN programs p   ON p.programs_id  = sec.program_id
-     INNER JOIN departments d ON d.dept_id      = p.department_id
-     LEFT JOIN staff s        ON s.staff_id     = sec.adviser_id
-     WHERE COALESCE(sec.status, "active") = "active"
-     ORDER BY d.department_code, p.program_code, sec.year_level, sec.section_name'
-);
-
-$programs = fetch_all('SELECT programs_id, program_code, program_name FROM programs ORDER BY program_code');
-
-$staffOptions = '<option value="">— Select Chair —</option>';
-$staffList = fetch_all(
+$allStaffList = fetch_all(
     'SELECT staff_id, full_name, dept_id 
      FROM staff 
+     WHERE COALESCE(status, \'active\') = \'active\'
      ORDER BY full_name'
 );
-foreach ($staffList as $s) {
-    $staffOptions .= '<option value="' . h($s['staff_id']) . '">' 
-                   . h($s['full_name']) . 
-                   '</option>';
+$existingChairMap = [];
+$chairRows = fetch_all('SELECT dept_id, chair_id FROM departments WHERE chair_id IS NOT NULL AND status = "active"');
+foreach ($chairRows as $cr) {
+    $existingChairMap[(int) $cr['chair_id']] = (int) $cr['dept_id'];
 }
+$allStaffJson = json_encode($allStaffList);
+$chairMapJson = json_encode($existingChairMap);
 /* -----------------------------------------------------------------------
  * Modals
  * --------------------------------------------------------------------- */
@@ -230,86 +198,11 @@ $editDeptModalBody = '
         <div>
             <label>Department Chair</label>
             <select name="chair_id" id="edit_chair_id">
-                ' . $staffOptions . '
+                <option value="">— Select Chair —</option>
             </select>
         </div>
     </div>
 
-    <div class="form-actions">
-        <button class="btn" type="submit">Save Changes</button>
-    </div>
-</form>';
-
-$sectionOptions = '';
-foreach ($programs as $p) {
-    $sectionOptions .= '<option value="' . h($p['programs_id']) . '">' . h($p['program_code'] . ' — ' . $p['program_name']) . '</option>';
-}
-
-$sectionModalBody = '
-<form method="post">
-    <input type="hidden" name="action" value="create_section">
-    <div class="form-grid cols-3">
-        <div>
-            <label>Program</label>
-            <select name="program_id" required>
-                <option value="">— select —</option>
-                ' . $sectionOptions . '
-            </select>
-        </div>
-        <div>
-            <label>Year Level</label>
-            <select name="year_level">
-                <option value="1">1st Year</option>
-                <option value="2">2nd Year</option>
-                <option value="3">3rd Year</option>
-                <option value="4">4th Year</option>
-            </select>
-        </div>
-        <div>
-            <label>Section Name</label>
-            <input type="text" name="section_name" placeholder="e.g. A" required maxlength="10">
-        </div>
-        <div>
-            <label>Max Slots</label>
-            <input type="number" name="max_slots" placeholder="e.g. 40" min="1">
-        </div>
-    </div>
-    <div class="form-actions">
-        <button class="btn" type="submit">Create Section</button>
-    </div>
-</form>';
-
-$editSectionModalBody = '
-<form method="post">
-    <input type="hidden" name="action" value="update_section">
-    <input type="hidden" name="section_id" id="edit_section_id">
-
-    <div class="form-grid cols-3">
-        <div>
-            <label>Program</label>
-            <select name="program_id" id="edit_section_program_id" required>
-                <option value="">— select —</option>
-                ' . $sectionOptions . '
-            </select>
-        </div>
-        <div>
-            <label>Year Level</label>
-            <select name="year_level" id="edit_section_year_level">
-                <option value="1">1st Year</option>
-                <option value="2">2nd Year</option>
-                <option value="3">3rd Year</option>
-                <option value="4">4th Year</option>
-            </select>
-        </div>
-        <div>
-            <label>Section Name</label>
-            <input type="text" name="section_name" id="edit_section_name" required maxlength="10">
-        </div>
-        <div>
-            <label>Max Slots</label>
-            <input type="number" name="max_slots" id="edit_section_max_slots" placeholder="e.g. 40" min="1">
-        </div>
-    </div>
     <div class="form-actions">
         <button class="btn" type="submit">Save Changes</button>
     </div>
@@ -320,8 +213,8 @@ ob_start();
 
 <div class="page-header">
     <div>
-        <h1>Departments &amp; Sections</h1>
-        <p>Manage all departments and class sections.</p>
+        <h1>Departments</h1>
+        <p>Manage all departments.</p>
     </div>
 </div>
 
@@ -382,7 +275,8 @@ ob_start();
                                             data-open="modal-edit-dept"
                                             data-id="<?= h($dept['dept_id']) ?>"
                                             data-code="<?= h($dept['department_code']) ?>"
-                                            data-name="<?= h($dept['department_name']) ?>">
+                                            data-name="<?= h($dept['department_name']) ?>"
+                                            data-chair="<?= h((string)($dept['chair_id'] ?? '')) ?>">
                                         <span class="material-symbols-outlined">edit</span>
                                     </button>
                                     <form class="inline-form" method="post"
@@ -403,113 +297,45 @@ ob_start();
         </div>
     </div>
 
-    <!-- ── SECTIONS ── -->
-    <div class="card">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-            <h3 style="margin:0;">Sections</h3>
-            <button class="btn small" data-open="modal-new-section">+ New Section</button>
-        </div>
-        <div class="dt modern-table" data-dt-page-size="10" data-dt-bulk-delete-url="<?= h(app_url('registrar/departments.php')) ?>" data-dt-bulk-id-field="section_id" data-dt-bulk-action="bulk_delete_sections" data-dt-bulk-confirm="Delete selected sections?">
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th data-dt-no-sort data-dt-no-export><input type="checkbox" class="dt-bulk-select-all" aria-label="Select all"></th>
-                            <th data-dt-key="section">Section</th>
-                            <th data-dt-key="program" data-dt-filter="select">Program</th>
-                            <th data-dt-key="year" data-dt-filter="select">Year</th>
-                            <th data-dt-key="adviser">Adviser</th>
-                            <th data-dt-key="slots">Slots</th>
-                            <th data-dt-no-sort>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    <?php if (empty($sections)): ?>
-                        <tr><td colspan="7" class="empty">No sections yet.</td></tr>
-                    <?php endif; ?>
-                    <?php foreach ($sections as $sec): ?>
-                        <tr data-dt-row-id="<?= h((string)$sec['id']) ?>" class="table-row"
-                            data-href="<?= h(app_url('registrar/section_detail.php?id=' . $sec['id'])) ?>">
-                            <td><input type="checkbox" class="dt-bulk-row" value="<?= h((string)$sec['id']) ?>" aria-label="Select row"></td>
-                            <td data-label="Section">
-                                <div class="table-cell-primary">
-                                    <div class="cell-icon section-icon"><span class="material-symbols-outlined">groups</span></div>
-                                    <div>
-                                        <strong><?= h($sec['program_code'] . ' ' . $sec['year_level'] . '-' . $sec['section_name']) ?></strong>
-                                    </div>
-                                </div>
-                            </td>
-                            <td data-label="Program" data-dt-value="<?= h($sec['program_code']) ?>">
-                                <span class="table-badge program-badge"><?= h($sec['program_code']) ?></span>
-                            </td>
-                            <td data-label="Year" data-dt-value="<?= h($sec['year_level']) ?>">Year <?= h($sec['year_level']) ?></td>
-                            <td data-label="Adviser">
-                                <?php if ($sec['adviser_name']): ?>
-                                    <span class="table-badge adviser-badge"><?= h($sec['adviser_name']) ?></span>
-                                <?php else: ?>
-                                    <span class="helper">—</span>
-                                <?php endif; ?>
-                            </td>
-                            <td data-label="Slots">
-                                <span class="table-badge count-badge"><?= $sec['max_slots'] ? h($sec['max_slots']) : '—' ?></span>
-                            </td>
-                            <td data-label="Actions">
-                                <div class="row-actions">
-                                    <a class="action-btn" title="View Students" aria-label="View Students"
-                                       href="<?= h(app_url('registrar/section_detail.php?id=' . $sec['id'])) ?>">
-                                        <span class="material-symbols-outlined">visibility</span>
-                                    </a>
-                                    <button class="action-btn" type="button" title="Edit" aria-label="Edit"
-                                            data-open="modal-edit-section"
-                                            data-id="<?= h($sec['id']) ?>"
-                                            data-program-id="<?= h($sec['program_id']) ?>"
-                                            data-year-level="<?= h($sec['year_level']) ?>"
-                                            data-section-name="<?= h($sec['section_name']) ?>"
-                                            data-max-slots="<?= h($sec['max_slots'] ?? '') ?>">
-                                        <span class="material-symbols-outlined">edit</span>
-                                    </button>
-                                    <form class="inline-form" method="post"
-                                          onsubmit="return confirm('Mark this section as inactive?');" style="display:inline;">
-                                        <input type="hidden" name="action" value="delete_section">
-                                        <input type="hidden" name="section_id" value="<?= h($sec['id']) ?>">
-                                        <button class="action-btn danger" type="submit" title="Delete" aria-label="Delete">
-                                            <span class="material-symbols-outlined">delete</span>
-                                        </button>
-                                    </form>
-                                </div>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
 </div>
 <script>
+const allStaff = <?= $allStaffJson ?>;
+const chairMap = <?= $chairMapJson ?>;
+
 document.addEventListener('click', function(e) {
     const deptBtn = e.target.closest('[data-open="modal-edit-dept"]');
     if (deptBtn) {
+        const deptId = parseInt(deptBtn.dataset.id);
+        const currentChairId = deptBtn.dataset.chair || '';
+
         document.getElementById('edit_dept_id').value = deptBtn.dataset.id;
         document.getElementById('edit_department_code').value = deptBtn.dataset.code;
         document.getElementById('edit_department_name').value = deptBtn.dataset.name;
-    }
 
-    const secBtn = e.target.closest('[data-open="modal-edit-section"]');
-    if (secBtn) {
-        document.getElementById('edit_section_id').value = secBtn.dataset.id;
-        document.getElementById('edit_section_program_id').value = secBtn.dataset.programId;
-        document.getElementById('edit_section_year_level').value = secBtn.dataset.yearLevel;
-        document.getElementById('edit_section_name').value = secBtn.dataset.sectionName;
-        document.getElementById('edit_section_max_slots').value = secBtn.dataset.maxSlots || '';
+        const select = document.getElementById('edit_chair_id');
+        select.innerHTML = '<option value="">— Select Chair —</option>';
+        allStaff.forEach(function(s) {
+            const opt = document.createElement('option');
+            opt.value = s.staff_id;
+            let label = s.full_name;
+            let disabled = false;
+            if (chairMap[s.staff_id] !== undefined && chairMap[s.staff_id] !== deptId) {
+                label += ' (already chair of another dept)';
+                disabled = true;
+            }
+            opt.textContent = label;
+            opt.disabled = disabled;
+            if (String(s.staff_id) === currentChairId) {
+                opt.selected = true;
+                opt.disabled = false;
+            }
+            select.appendChild(opt);
+        });
     }
 });
 </script>
 <?= render_modal('modal-new-dept',      'New Department',    $deptModalBody) ?>
-<?= render_modal('modal-new-section',   'New Section',       $sectionModalBody) ?>
 <?= render_modal('modal-edit-dept',     'Edit Department',   $editDeptModalBody) ?>
-<?= render_modal('modal-edit-section',  'Edit Section',      $editSectionModalBody) ?>
 
 <?php
 $deptStyles = '<style>
@@ -532,7 +358,6 @@ $deptStyles = '<style>
     color: #fff; flex-shrink: 0;
 }
 .cell-icon.dept-icon { background: linear-gradient(135deg, #3b82f6, #1d4ed8); }
-.cell-icon.section-icon { background: linear-gradient(135deg, #8b5cf6, #6d28d9); }
 .cell-icon .material-symbols-outlined { font-size: 20px; }
 .cell-sub { display: block; font-size: 12px; color: #94a3b8; font-weight: 400; margin-top: 2px; }
 .table-cell-text { color: #475569; }
@@ -541,8 +366,6 @@ $deptStyles = '<style>
     font-size: 12px; font-weight: 600;
 }
 .chair-badge { background: #fef3c7; color: #d97706; }
-.program-badge { background: #eff6ff; color: #3b82f6; }
-.adviser-badge { background: #f0fdf4; color: #16a34a; }
 .count-badge { background: #f1f5f9; color: #475569; }
 .row-actions { display: flex; gap: 4px; }
 .action-btn {
@@ -556,4 +379,4 @@ $deptStyles = '<style>
 .action-btn .material-symbols-outlined { font-size: 18px; }
 .modern-table tbody tr:last-child td { border-bottom: none; }
 </style>';
-render_page('Departments & Sections', 'Departments & Sections', $deptStyles . (string) ob_get_clean());
+render_page('Departments', 'Departments', $deptStyles . (string) ob_get_clean());

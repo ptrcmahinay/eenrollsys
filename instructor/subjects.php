@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/app.php';
-require_role('instructor');
+require_role(['instructor', 'adviser']);
 
 $staff = current_staff();
 if ($staff === null) {
@@ -23,20 +23,34 @@ if (is_post()) {
     redirect('instructor/subjects.php');
 }
 
+$currentTerm = current_term();
+$termFilter = '';
+$termParams = ['instructor_id1' => (int) $staff['staff_id'], 'instructor_id2' => (int) $staff['staff_id']];
+if ($currentTerm !== null) {
+    $termFilter = ' AND o.term_id = :term_id';
+    $termParams['term_id'] = (int) $currentTerm['id'];
+}
+
 $rows = fetch_all(
-    'SELECT o.id, o.syllabus_path, o.day_of_week, o.time_range, o.room,
+    'SELECT o.id,
+            o.sched_code,
+            o.syllabus_path,
+            COALESCE(cs.day, o.day_of_week) AS day_of_week,
+            COALESCE(cs.time_range, o.time_range) AS time_range,
+            COALESCE(cs.room, o.room) AS room,
             sub.subject_code, sub.subject_description,
             p.program_code, sec.year_level, sec.section_name,
             COUNT(ss.id) AS student_count
      FROM section_subject_offerings o
+     LEFT JOIN class_schedules cs ON cs.schedule_code = o.sched_code
      INNER JOIN sections sec ON sec.id = o.section_id
      INNER JOIN programs p ON p.programs_id = sec.program_id
      INNER JOIN subjects sub ON sub.subject_id = o.subject_id
      LEFT JOIN student_subjects ss ON ss.offering_id = o.id AND ss.enrollment_status = "enrolled"
-     WHERE o.instructor_id = :instructor_id
+     WHERE (o.instructor_id = :instructor_id1 OR cs.instructor_id = :instructor_id2)' . $termFilter . '
      GROUP BY o.id
      ORDER BY sub.subject_code',
-    ['instructor_id' => (int) $staff['staff_id']]
+    $termParams
 );
 
 ob_start();
@@ -51,10 +65,11 @@ ob_start();
     <div class="dt" data-dt-page-size="10">
 <div class="table-wrap">
         <table>
-            <thead><tr><th>Subject</th><th>Description</th><th>Section</th><th>Schedule</th><th>Students</th><th>Syllabus</th><th data-dt-no-sort>Upload</th></tr></thead>
+            <thead><tr><th>Sched Code</th><th>Subject</th><th>Description</th><th>Section</th><th>Schedule</th><th>Students</th><th>Syllabus</th><th data-dt-no-sort>Upload</th></tr></thead>
             <tbody>
             <?php foreach ($rows as $row): ?>
                 <tr>
+                    <td><span class="badge" style="font-family:monospace;"><?= h($row['sched_code'] ?? '—') ?></span></td>
                     <td><?= h($row['subject_code']) ?></td>
                     <td><?= h($row['subject_description']) ?></td>
                     <td><?= h($row['program_code'] . ' ' . $row['year_level'] . $row['section_name']) ?></td>

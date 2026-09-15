@@ -51,34 +51,37 @@ if (is_post()) {
 $filterTab = trim($_GET['tab'] ?? 'pending');
 if (!in_array($filterTab, ['pending', 'processed', 'all'], true)) $filterTab = 'pending';
 
+$currentTermId = (int) (current_term()['id'] ?? 0);
+
 if ($requestType === 'enrollment') {
     $statusFilter = match ($filterTab) {
         'pending' => ' AND er.workflow_status IN ("adviser_approved")',
         'processed' => ' AND er.workflow_status IN ("chair_approved", "rejected")',
         default => ' AND er.workflow_status IN ("adviser_approved", "chair_approved", "rejected")',
     };
+    $termFilter = $currentTermId > 0 ? ' AND er.term_id = :term_id' : '';
 
     $requests = fetch_all(
-        'SELECT er.*, s.student_number, s.full_name, s.id AS student_id, p.program_code,
+        'SELECT er.*, s.student_number, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, s.id AS student_id, p.program_code,
                 ay.year_label, t.semester
          FROM enrollment_requests er
          INNER JOIN students s ON s.id = er.student_id
          INNER JOIN programs p ON p.programs_id = s.program_id
          INNER JOIN academic_terms t ON t.id = er.term_id
          INNER JOIN academic_years ay ON ay.id = t.academic_year_id
-         WHERE p.department_id = :department_id' . $statusFilter . '
+         WHERE p.department_id = :department_id' . $termFilter . $statusFilter . '
          ORDER BY er.updated_at DESC',
-        ['department_id' => (int) $staff['dept_id']]
+        array_merge(['department_id' => (int) $staff['dept_id']], $currentTermId > 0 ? ['term_id' => $currentTermId] : [])
     );
 
     $pendingCount = (int) (fetch_one(
-        'SELECT COUNT(*) AS cnt FROM enrollment_requests er INNER JOIN students s ON s.id = er.student_id INNER JOIN programs p ON p.programs_id = s.program_id WHERE p.department_id = :did AND er.workflow_status = "adviser_approved"',
-        ['did' => (int) $staff['dept_id']]
+        'SELECT COUNT(*) AS cnt FROM enrollment_requests er INNER JOIN students s ON s.id = er.student_id INNER JOIN programs p ON p.programs_id = s.program_id WHERE p.department_id = :did AND er.workflow_status = "adviser_approved"' . $termFilter,
+        array_merge(['did' => (int) $staff['dept_id']], $currentTermId > 0 ? ['term_id' => $currentTermId] : [])
     )['cnt'] ?? 0);
 
     $processedCount = (int) (fetch_one(
-        'SELECT COUNT(*) AS cnt FROM enrollment_requests er INNER JOIN students s ON s.id = er.student_id INNER JOIN programs p ON p.programs_id = s.program_id WHERE p.department_id = :did AND er.workflow_status IN ("chair_approved", "rejected")',
-        ['did' => (int) $staff['dept_id']]
+        'SELECT COUNT(*) AS cnt FROM enrollment_requests er INNER JOIN students s ON s.id = er.student_id INNER JOIN programs p ON p.programs_id = s.program_id WHERE p.department_id = :did AND er.workflow_status IN ("chair_approved", "rejected")' . $termFilter,
+        array_merge(['did' => (int) $staff['dept_id']], $currentTermId > 0 ? ['term_id' => $currentTermId] : [])
     )['cnt'] ?? 0);
 } else {
     $statusFilter = match ($filterTab) {
@@ -86,10 +89,11 @@ if ($requestType === 'enrollment') {
         'processed' => ' AND adr.workflow_status IN ("chair_approved", "rejected")',
         default => ' AND adr.workflow_status IN ("adviser_approved", "chair_approved", "rejected")',
     };
+    $termFilter = $currentTermId > 0 ? ' AND adr.term_id = :term_id' : '';
 
     $requests = fetch_all(
         'SELECT adr.*, sub.subject_code, sub.subject_description, (sub.lec_credit + sub.lab_credit) AS subject_units,
-                s.student_number, s.full_name, s.id AS student_id,
+                s.student_number, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, s.id AS student_id,
                 p.program_code, sec.section_name,
                 ay.year_label, t.semester
          FROM add_drop_requests adr
@@ -99,19 +103,19 @@ if ($requestType === 'enrollment') {
          LEFT JOIN sections sec ON sec.id = adr.section_id
          INNER JOIN academic_terms t ON t.id = adr.term_id
          INNER JOIN academic_years ay ON ay.id = t.academic_year_id
-         WHERE p.department_id = :department_id' . $statusFilter . '
+         WHERE p.department_id = :department_id' . $termFilter . $statusFilter . '
          ORDER BY adr.updated_at DESC',
-        ['department_id' => (int) $staff['dept_id']]
+        array_merge(['department_id' => (int) $staff['dept_id']], $currentTermId > 0 ? ['term_id' => $currentTermId] : [])
     );
 
     $pendingCount = (int) (fetch_one(
-        'SELECT COUNT(*) AS cnt FROM add_drop_requests adr INNER JOIN students s ON s.id = adr.student_id INNER JOIN programs p ON p.programs_id = s.program_id WHERE p.department_id = :did AND adr.workflow_status = "adviser_approved"',
-        ['did' => (int) $staff['dept_id']]
+        'SELECT COUNT(*) AS cnt FROM add_drop_requests adr INNER JOIN students s ON s.id = adr.student_id INNER JOIN programs p ON p.programs_id = s.program_id WHERE p.department_id = :did AND adr.workflow_status = "adviser_approved"' . $termFilter,
+        array_merge(['did' => (int) $staff['dept_id']], $currentTermId > 0 ? ['term_id' => $currentTermId] : [])
     )['cnt'] ?? 0);
 
     $processedCount = (int) (fetch_one(
-        'SELECT COUNT(*) AS cnt FROM add_drop_requests adr INNER JOIN students s ON s.id = adr.student_id INNER JOIN programs p ON p.programs_id = s.program_id WHERE p.department_id = :did AND adr.workflow_status IN ("chair_approved", "rejected")',
-        ['did' => (int) $staff['dept_id']]
+        'SELECT COUNT(*) AS cnt FROM add_drop_requests adr INNER JOIN students s ON s.id = adr.student_id INNER JOIN programs p ON p.programs_id = s.program_id WHERE p.department_id = :did AND adr.workflow_status IN ("chair_approved", "rejected")' . $termFilter,
+        array_merge(['did' => (int) $staff['dept_id']], $currentTermId > 0 ? ['term_id' => $currentTermId] : [])
     )['cnt'] ?? 0);
 }
 

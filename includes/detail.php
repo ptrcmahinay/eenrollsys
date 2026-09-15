@@ -53,7 +53,7 @@ $types = [
     'user' => [
         'title' => 'User Detail',
         'roles' => ['admin'],
-        'sql'   => 'SELECT u.*, COALESCE(s.full_name, st.full_name, u.username) AS display_name,
+        'sql'   => 'SELECT u.*, COALESCE(CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name), st.full_name, u.username) AS display_name,
                            GROUP_CONCAT(r.role_name ORDER BY r.role_name SEPARATOR ", ") AS roles
                     FROM users u
                     LEFT JOIN students s ON s.id = u.student_id
@@ -148,6 +148,7 @@ $types = [
         'fields' => [
             ['Term', 'year_label'],
             ['Semester', 'semester'],
+            ['Sched Code', 'sched_code'],
             ['Subject', 'subject_code'],
             ['Description', 'subject_description'],
             ['Section', 'section_name'],
@@ -165,7 +166,7 @@ $types = [
     'request' => [
         'title' => 'Enrollment Request Detail',
         'roles' => ['admin', 'registrar', 'chair', 'adviser'],
-        'sql'   => 'SELECT er.*, s.student_number, s.full_name, p.program_code,
+        'sql'   => 'SELECT er.*, s.student_number, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, p.program_code,
                            ay.year_label, t.semester, sec.section_name AS requested_section_name
                     FROM enrollment_requests er
                     INNER JOIN students s ON s.id = er.student_id

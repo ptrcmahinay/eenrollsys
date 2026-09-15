@@ -12,7 +12,7 @@ if ($requestId <= 0) {
 
 $enrollment = fetch_one(
     'SELECT er.id, er.total_amount, er.payment_status, er.ra10931_status,
-            s.student_number, s.full_name, s.year_level, s.address, p.program_code,
+            s.student_number, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, s.year_level, s.address, p.program_code,
             ay.year_label, t.semester
      FROM enrollment_requests er
      INNER JOIN students s ON s.id = er.student_id

@@ -71,3 +71,13 @@ $irregularUnitCap = (int) setting('irregular_unit_cap', '28');
     <p class="settings-card-desc">Set per year-level enrollment windows.</p>
     <a class="btn secondary" href="<?= h(app_url('registrar/enrollment_schedule.php')) ?>">Manage Schedules &rarr;</a>
 </div>
+
+<div class="settings-card">
+    <h3>Grading Configuration</h3>
+    <p class="settings-card-desc">Configure grade scale, academic honors, and grade submission rules.</p>
+    <div class="actions-row">
+        <a class="btn secondary" href="<?= h(app_url('registrar/grade_scale.php')) ?>">Grade Scale</a>
+        <a class="btn secondary" href="<?= h(app_url('registrar/academic_honors.php')) ?>">Academic Honors</a>
+        <a class="btn secondary" href="<?= h(app_url('registrar/grade_management.php')) ?>">Grade Management</a>
+    </div>
+</div>

@@ -185,4 +185,14 @@ if ($action === 'update_notifications') {
     exit;
 }
 
+if ($action === 'update_grading' && in_array($role, ['admin', 'registrar'], true)) {
+    $keys = ['grade_deadline_days'];
+    foreach ($keys as $key) {
+        $value = trim((string) ($_POST[$key] ?? ''));
+        if ($value !== '') set_setting($key, $value);
+    }
+    echo json_encode(['success' => true, 'message' => 'Grading settings updated.']);
+    exit;
+}
+
 echo json_encode(['success' => false, 'message' => 'Invalid action.']);

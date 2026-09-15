@@ -6,15 +6,16 @@ require_role('registrar');
 
 if (isset($_GET['template_only'])) {
     $rows = fetch_all(
-        'SELECT s.student_number, s.full_name, sub.subject_code, COALESCE(ss.final_grade, "") AS final_grade
+        'SELECT s.student_number, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, sub.subject_code, o.sched_code, COALESCE(ss.final_grade, "") AS final_grade
          FROM student_subjects ss
          INNER JOIN students s ON s.id = ss.student_id
          INNER JOIN subjects sub ON sub.subject_id = ss.subject_id
+         LEFT JOIN section_subject_offerings o ON o.id = ss.offering_id
          WHERE ss.term_id = :term_id
          ORDER BY s.student_number, sub.subject_code',
         ['term_id' => (int) (current_term()['id'] ?? 0)]
     );
-    $csvRows = array_map(static fn($row) => [$row['student_number'], $row['full_name'], $row['subject_code'], $row['final_grade']], $rows);
+    $csvRows = array_map(static fn($row) => [$row['student_number'], $row['full_name'], $row['subject_code'], $row['sched_code'], $row['final_grade']], $rows);
     require_once __DIR__ . '/../includes/grade_upload_helpers.php';
     output_grade_template_csv($csvRows);
 }
@@ -28,17 +29,37 @@ if (is_post()) {
     redirect('registrar/upload_grades.php');
 }
 
+$filterTerm = (int) ($_GET['term_id'] ?? 0);
+$currentTermData = current_term();
+if ($filterTerm === 0 && $currentTermData) $filterTerm = (int) $currentTermData['id'];
+
+$params = [];
+$filter = '';
+if ($filterTerm > 0) {
+    $filter = ' AND ss.term_id = :term_id';
+    $params['term_id'] = $filterTerm;
+}
+
 $rows = fetch_all(
-    'SELECT ss.id AS student_subject_id, s.student_number, s.full_name, sub.subject_code, sub.subject_description,
-            ss.final_grade, p.program_code, sec.section_name, ay.year_label, t.semester
+    'SELECT ss.id AS student_subject_id, s.student_number, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, sub.subject_code, sub.subject_description,
+            ss.final_grade, o.sched_code, p.program_code, sec.section_name, ay.year_label, t.semester
      FROM student_subjects ss
      INNER JOIN students s ON s.id = ss.student_id
      INNER JOIN programs p ON p.programs_id = s.program_id
      LEFT JOIN sections sec ON sec.id = ss.section_id
      INNER JOIN subjects sub ON sub.subject_id = ss.subject_id
+     LEFT JOIN section_subject_offerings o ON o.id = ss.offering_id
      INNER JOIN academic_terms t ON t.id = ss.term_id
      INNER JOIN academic_years ay ON ay.id = t.academic_year_id
-     ORDER BY ay.start_year DESC, s.student_number, sub.subject_code'
+     WHERE 1=1' . $filter . '
+     ORDER BY ay.start_year DESC, s.student_number, sub.subject_code',
+    $params
+);
+
+$terms = fetch_all(
+    'SELECT t.id, ay.year_label, t.semester FROM academic_terms t
+     INNER JOIN academic_years ay ON ay.id = t.academic_year_id
+     ORDER BY ay.start_year DESC, FIELD(t.semester,"1","2","mid")'
 );
 
 $termDeadline = current_term();
@@ -55,15 +76,29 @@ ob_start();
 </div>
 
 <div class="card">
+    <form method="get" class="filter-bar">
+        <div>
+            <label>Academic Term</label>
+            <select name="term_id" onchange="this.form.submit()">
+                <?php foreach ($terms as $t): ?>
+                    <option value="<?= $t['id'] ?>" <?= $filterTerm === (int) $t['id'] ? 'selected' : '' ?>><?= h($t['year_label'] . ' — ' . semester_label($t['semester'])) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+    </form>
+</div>
+
+<div class="card">
     <div class="table-wrap">
         <table>
-            <thead><tr><th>Student</th><th>Program / Section</th><th>Term</th><th>Subject</th><th>Description</th><th>Final Grade</th><th>Save</th></tr></thead>
+            <thead><tr><th>Student</th><th>Program / Section</th><th>Term</th><th>Sched Code</th><th>Subject</th><th>Description</th><th>Final Grade</th><th>Save</th></tr></thead>
             <tbody>
             <?php foreach ($rows as $row): ?>
                 <tr>
                     <td><?= h($row['student_number'] . ' - ' . $row['full_name']) ?></td>
                     <td><?= h($row['program_code'] . ' ' . ($row['section_name'] ?: '')) ?></td>
                     <td><?= h($row['year_label'] . ' / ' . semester_label((string) $row['semester'])) ?></td>
+                    <td><span class="badge" style="font-family:monospace;"><?= h($row['sched_code'] ?? '—') ?></span></td>
                     <td><?= h($row['subject_code']) ?></td>
                     <td><?= h($row['subject_description']) ?></td>
                     <td>

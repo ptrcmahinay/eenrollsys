@@ -31,7 +31,7 @@ $sql = 'SELECT er.id AS request_id,
                er.total_amount, er.ra10931_status,
                er.adviser_remark, er.chair_remark, er.registrar_remark,
                er.created_at AS submitted_at, er.updated_at,
-               s.id AS student_id, s.student_number, s.full_name, s.year_level,
+               s.id AS student_id, s.student_number, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, s.year_level,
                p.program_code, p.program_name,
                sec.section_name,
                ay.year_label, t.semester
@@ -53,7 +53,7 @@ if ($filterProgram > 0) {
     $params['prog'] = $filterProgram;
 }
 if ($search !== '') {
-    $sql .= ' AND (s.full_name LIKE :q OR s.student_number LIKE :q2)';
+    $sql .= ' AND (CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) LIKE :q OR s.student_number LIKE :q2)';
     $params['q']  = '%' . $search . '%';
     $params['q2'] = '%' . $search . '%';
 }

@@ -10,7 +10,9 @@ if (!is_post()) {
 
 $data = [
     'student_number' => trim($_POST['student_number'] ?? ''),
-    'full_name' => trim($_POST['full_name'] ?? ''),
+    'first_name' => trim($_POST['first_name'] ?? ''),
+    'middle_name' => trim($_POST['middle_name'] ?? ''),
+    'last_name' => trim($_POST['last_name'] ?? ''),
     'address' => trim($_POST['address'] ?? ''),
     'program_id' => (int) ($_POST['program_id'] ?? 0),
     'year_level' => (int) ($_POST['year_level'] ?? 1),
@@ -19,7 +21,7 @@ $data = [
     'ra10931_override' => trim($_POST['ra10931_override'] ?? 'auto'),
 ];
 
-if ($data['student_number'] === '' || $data['full_name'] === '' || $data['address'] === '' || $data['program_id'] <= 0) {
+if ($data['student_number'] === '' || $data['first_name'] === '' || $data['last_name'] === '' || $data['address'] === '' || $data['program_id'] <= 0) {
     flash('error', 'Please fill out all required student fields.');
     redirect('admin/students.php');
 }
@@ -31,8 +33,8 @@ if ($existing !== null) {
 }
 
 execute_sql(
-    'INSERT INTO students (student_number, full_name, address, program_id, year_level, section_id, entry_year, ra10931_override, status, created_at)
-     VALUES (:student_number, :full_name, :address, :program_id, :year_level, :section_id, :entry_year, :ra10931_override, "active", NOW())',
+    'INSERT INTO students (student_number, first_name, middle_name, last_name, address, program_id, year_level, section_id, entry_year, ra10931_override, record_status, created_at)
+     VALUES (:student_number, :first_name, :middle_name, :last_name, :address, :program_id, :year_level, :section_id, :entry_year, :ra10931_override, "Active", NOW())',
     $data
 );
 $studentId = (int) db()->lastInsertId();
