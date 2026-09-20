@@ -191,7 +191,7 @@ ob_start();
                             <td><?= h(format_money($ev['total_units'])) ?></td>
                             <td>
                                 <input type="hidden" name="equivalencies[<?= (int) $ev['new_subject_id'] ?>][new_subject_id]" value="<?= (int) $ev['new_subject_id'] ?>">
-                                <input type="hidden" name="equivalencies[<?= (int) $ev['new_subject_id'] ?>][old_subject_id]" value="<?= $ev['matched_subject'] ? (int) $ev['new_subject_id'] : 0 ?>">
+                                <input type="hidden" name="equivalencies[<?= (int) $ev['new_subject_id'] ?>][old_subject_id]" value="<?= $ev['matched_subject'] ? (int) ($ev['matched_subject']['subject_id'] ?? 0) : 0 ?>">
                                 <select name="equivalencies[<?= (int) $ev['new_subject_id'] ?>][equivalency_type]" style="font-size:12px;padding:4px 8px;">
                                     <option value="exact" <?= $ev['status'] === 'credited' ? 'selected' : '' ?>>Exact</option>
                                     <option value="equivalent" <?= $ev['status'] === 'for_evaluation' ? 'selected' : '' ?>>Equivalent</option>

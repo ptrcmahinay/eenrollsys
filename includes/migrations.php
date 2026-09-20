@@ -958,6 +958,127 @@ function ensure_composite_indexes(): void
     }
 }
 
+function ensure_student_academic_placements_table(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    try {
+        global $pdo;
+        if (!($pdo instanceof PDO)) return;
+
+        $stmt = $pdo->query("SHOW TABLES LIKE 'student_academic_placements'");
+        if (!$stmt || !$stmt->fetch()) {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `student_academic_placements` (
+                    `id`                        INT AUTO_INCREMENT PRIMARY KEY,
+                    `student_id`                INT NOT NULL,
+                    `department_id`             INT NULL,
+                    `program_id`                INT NOT NULL,
+                    `curriculum_id`             INT NULL,
+                    `term_id`                   INT NOT NULL,
+                    `year_level`                INT NOT NULL DEFAULT 1,
+                    `standing`                  INT NOT NULL DEFAULT 1,
+                    `enrollment_status`         ENUM('regular','irregular') NOT NULL DEFAULT 'irregular',
+                    `section_id`                INT NULL,
+                    `placement_type`            ENUM('shifting','transfer','reentry','regular') NOT NULL DEFAULT 'regular',
+                    `placement_reason`          TEXT NULL,
+                    `advanced_subject_allowed`  ENUM('yes','no') NOT NULL DEFAULT 'no',
+                    `approved_by`               INT NULL,
+                    `override_reason`           TEXT NULL,
+                    `overridden_by`             INT NULL,
+                    `remarks`                   TEXT NULL,
+                    `created_at`                TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT `fk_sap_student` FOREIGN KEY (`student_id`) REFERENCES `students`(`id`) ON DELETE CASCADE,
+                    CONSTRAINT `fk_sap_program` FOREIGN KEY (`program_id`) REFERENCES `programs`(`programs_id`) ON DELETE RESTRICT,
+                    CONSTRAINT `fk_sap_curriculum` FOREIGN KEY (`curriculum_id`) REFERENCES `program_curriculum`(`curriculum_id`) ON DELETE SET NULL,
+                    INDEX `idx_sap_student` (`student_id`),
+                    INDEX `idx_sap_term` (`term_id`),
+                    INDEX `idx_sap_program` (`program_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+            ");
+        }
+    } catch (\Throwable $e) {
+    }
+}
+
+function ensure_transferee_records_table(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    try {
+        global $pdo;
+        if (!($pdo instanceof PDO)) return;
+
+        $stmt = $pdo->query("SHOW TABLES LIKE 'transferee_records'");
+        if (!$stmt || !$stmt->fetch()) {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `transferee_records` (
+                    `id`                            INT AUTO_INCREMENT PRIMARY KEY,
+                    `student_id`                    INT NOT NULL,
+                    `previous_school`               VARCHAR(255) NOT NULL,
+                    `previous_program`              VARCHAR(255) NULL,
+                    `date_of_transfer`              DATE NULL,
+                    `tor_received`                  ENUM('received','pending') NOT NULL DEFAULT 'pending',
+                    `tor_date`                      DATE NULL,
+                    `honorable_dismissal`           ENUM('received','pending') NOT NULL DEFAULT 'pending',
+                    `transfer_credentials_status`   ENUM('complete','incomplete') NOT NULL DEFAULT 'incomplete',
+                    `evaluation_status`             ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+                    `remarks`                       TEXT NULL,
+                    `evaluated_by`                  INT NULL,
+                    `evaluated_at`                  TIMESTAMP NULL,
+                    `created_at`                    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT `fk_tr_student` FOREIGN KEY (`student_id`) REFERENCES `students`(`id`) ON DELETE CASCADE,
+                    INDEX `idx_tr_student` (`student_id`),
+                    INDEX `idx_tr_status` (`evaluation_status`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+            ");
+        }
+    } catch (\Throwable $e) {
+    }
+}
+
+function ensure_transferee_subjects_table(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    try {
+        global $pdo;
+        if (!($pdo instanceof PDO)) return;
+
+        $stmt = $pdo->query("SHOW TABLES LIKE 'transferee_subjects'");
+        if (!$stmt || !$stmt->fetch()) {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `transferee_subjects` (
+                    `id`                        INT AUTO_INCREMENT PRIMARY KEY,
+                    `transferee_id`             INT NOT NULL,
+                    `original_subject_code`     VARCHAR(50) NOT NULL,
+                    `original_subject_name`     VARCHAR(255) NOT NULL,
+                    `original_units`            DECIMAL(4,1) NOT NULL DEFAULT 0,
+                    `grade`                     VARCHAR(10) NULL,
+                    `term_taken`                VARCHAR(100) NULL,
+                    `equivalent_subject_id`     INT NULL,
+                    `equivalency_type`          ENUM('exact','equivalent','not_equivalent') NULL,
+                    `created_at`                TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT `fk_ts_transferee` FOREIGN KEY (`transferee_id`) REFERENCES `transferee_records`(`id`) ON DELETE CASCADE,
+                    CONSTRAINT `fk_ts_subject` FOREIGN KEY (`equivalent_subject_id`) REFERENCES `subjects`(`subject_id`) ON DELETE SET NULL,
+                    INDEX `idx_ts_transferee` (`transferee_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+            ");
+        }
+    } catch (\Throwable $e) {
+    }
+}
+        }
+    } catch (\Throwable $e) {
+    }
+}
+
 function ensure_shifting_requests_table(): void
 {
     static $done = false;
@@ -1087,10 +1208,6 @@ function ensure_shifting_workflow_columns(): void
         $stmt = $pdo->query("SHOW COLUMNS FROM `students` LIKE 'shifting_request_id'");
         if (!$stmt || !$stmt->fetch()) {
             $pdo->exec("ALTER TABLE `students` ADD COLUMN `shifting_request_id` INT NULL AFTER `ra10931_override`");
-        }
-    } catch (\Throwable $e) {
-    }
-}
         }
     } catch (\Throwable $e) {
     }

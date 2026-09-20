@@ -74,6 +74,12 @@ switch ($role) {
                 ['label' => 'Add/Drop Requests','path' => 'registrar/enrollment.php?type=add_drop', 'icon' => 'edit_note'],
                 ['label' => 'Direct Enroll',    'path' => 'registrar/direct_enroll.php',  'icon' => 'person_add'],
             ]],
+            ['type' => 'header', 'label' => 'Shifting & Transfer'],
+            ['label' => 'Shifting Requests', 'path' => 'registrar/shifting.php',   'icon' => 'swap_horiz'],
+            ['label' => 'Transferee Processing', 'path' => 'registrar/transferee.php', 'icon' => 'transfer_within_a_station'],
+            ['type' => 'header', 'label' => 'Shifting & Transfer'],
+            ['label' => 'Shifting Requests', 'path' => 'registrar/shifting.php',   'icon' => 'swap_horiz'],
+            ['label' => 'Transferee Processing', 'path' => 'registrar/transferee.php', 'icon' => 'transfer_within_a_station'],
             ['type' => 'divider'],
             ['type' => 'header', 'label' => 'Grading'],
             ['label' => 'Grade Management', 'path' => 'registrar/grade_management.php',  'icon' => 'grading'],
@@ -152,6 +158,7 @@ switch ($role) {
             ['type' => 'header', 'label' => 'Enrollment'],
             ['label' => 'Online Enrollment', 'path' => 'student/enrollment.php',       'icon' => 'app_registration'],
             ['label' => 'Enrollment Status', 'path' => 'student/enrollment_status.php','icon' => 'track_changes'],
+            ['label' => 'Shifting Request',  'path' => 'student/shifting.php',         'icon' => 'swap_horiz'],
         ];
         if ($currentUser !== null && $currentUser['student_id'] > 0 && student_is_irregular((int) $currentUser['student_id'])) {
             $menu[] = ['label' => 'Add/Drop Subjects', 'path' => 'student/add_drop.php', 'icon' => 'edit_note'];

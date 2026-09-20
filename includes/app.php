@@ -53,6 +53,9 @@ function db(): PDO
         ensure_student_program_history_table();
         ensure_subject_equivalencies_table();
         ensure_shifting_workflow_columns();
+        ensure_student_academic_placements_table();
+        ensure_transferee_records_table();
+        ensure_transferee_subjects_table();
         ensure_grading_engine_tables();
         ensure_grades_term_id_column();
         ensure_offering_term_protection();
