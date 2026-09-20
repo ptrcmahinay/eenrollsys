@@ -954,9 +954,143 @@ function ensure_composite_indexes(): void
             if (!$stmt || !$stmt->fetch()) {
                 try {
                     $pdo->exec("ALTER TABLE `{$table}` ADD INDEX `{$idx['name']}` {$idx['cols']}");
-                } catch (\Throwable $e) {
-                }
-            }
+    } catch (\Throwable $e) {
+    }
+}
+
+function ensure_shifting_requests_table(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    try {
+        global $pdo;
+        if (!($pdo instanceof PDO)) return;
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS `shifting_requests` (
+                `id`                    INT AUTO_INCREMENT PRIMARY KEY,
+                `student_id`            INT NOT NULL,
+                `current_program_id`    INT NOT NULL,
+                `target_program_id`     INT NOT NULL,
+                `current_year_level`    INT NOT NULL,
+                `target_year_level`     INT NULL,
+                `reason`                TEXT NOT NULL,
+                `workflow_status`       ENUM('submitted','adviser_review','current_chair_review','target_chair_review','registrar_review','curriculum_evaluation','approved','processed','rejected','cancelled') NOT NULL DEFAULT 'submitted',
+                `adviser_status`        ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+                `current_chair_status`  ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+                `target_chair_status`   ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+                `registrar_status`      ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+                `adviser_remark`        TEXT NULL,
+                `current_chair_remark`  TEXT NULL,
+                `target_chair_remark`   TEXT NULL,
+                `registrar_remark`      TEXT NULL,
+                `adviser_processed_at`  TIMESTAMP NULL,
+                `current_chair_processed_at` TIMESTAMP NULL,
+                `target_chair_processed_at`  TIMESTAMP NULL,
+                `registrar_processed_at`     TIMESTAMP NULL,
+                `adviser_processed_by`  INT NULL,
+                `current_chair_processed_by` INT NULL,
+                `target_chair_processed_by`  INT NULL,
+                `registrar_processed_by`     INT NULL,
+                `evaluation_notes`      TEXT NULL,
+                `processed_at`          TIMESTAMP NULL,
+                `processed_by`          INT NULL,
+                `created_at`            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `updated_at`            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                CONSTRAINT `fk_sr_student` FOREIGN KEY (`student_id`) REFERENCES `students`(`id`) ON DELETE CASCADE,
+                CONSTRAINT `fk_sr_current_program` FOREIGN KEY (`current_program_id`) REFERENCES `programs`(`programs_id`) ON DELETE RESTRICT,
+                CONSTRAINT `fk_sr_target_program` FOREIGN KEY (`target_program_id`) REFERENCES `programs`(`programs_id`) ON DELETE RESTRICT,
+                INDEX `idx_sr_student` (`student_id`),
+                INDEX `idx_sr_status` (`workflow_status`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+        ");
+    } catch (\Throwable $e) {
+    }
+}
+
+function ensure_student_program_history_table(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    try {
+        global $pdo;
+        if (!($pdo instanceof PDO)) return;
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS `student_program_history` (
+                `id`                INT AUTO_INCREMENT PRIMARY KEY,
+                `student_id`        INT NOT NULL,
+                `program_id`        INT NOT NULL,
+                `curriculum_id`     INT NULL,
+                `term_started`      INT NOT NULL,
+                `term_ended`        INT NULL,
+                `status`            ENUM('active','shifted','transferred','dropped','graduated') NOT NULL DEFAULT 'active',
+                `reason`            TEXT NULL,
+                `created_at`        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT `fk_sph_student` FOREIGN KEY (`student_id`) REFERENCES `students`(`id`) ON DELETE CASCADE,
+                CONSTRAINT `fk_sph_program` FOREIGN KEY (`program_id`) REFERENCES `programs`(`programs_id`) ON DELETE RESTRICT,
+                CONSTRAINT `fk_sph_curriculum` FOREIGN KEY (`curriculum_id`) REFERENCES `program_curriculum`(`curriculum_id`) ON DELETE SET NULL,
+                INDEX `idx_sph_student` (`student_id`),
+                INDEX `idx_sph_program` (`program_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+        ");
+    } catch (\Throwable $e) {
+    }
+}
+
+function ensure_subject_equivalencies_table(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    try {
+        global $pdo;
+        if (!($pdo instanceof PDO)) return;
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS `subject_equivalencies` (
+                `id`                INT AUTO_INCREMENT PRIMARY KEY,
+                `shifting_request_id` INT NULL,
+                `old_subject_id`    INT NOT NULL,
+                `new_subject_id`    INT NOT NULL,
+                `equivalency_type`  ENUM('exact','equivalent','not_equivalent') NOT NULL DEFAULT 'equivalent',
+                `credit_units`      DECIMAL(4,1) NOT NULL DEFAULT 0,
+                `status`            ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+                `approved_by`       INT NULL,
+                `approved_at`       TIMESTAMP NULL,
+                `remarks`           TEXT NULL,
+                `created_at`        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT `fk_se_old_subject` FOREIGN KEY (`old_subject_id`) REFERENCES `subjects`(`subject_id`) ON DELETE RESTRICT,
+                CONSTRAINT `fk_se_new_subject` FOREIGN KEY (`new_subject_id`) REFERENCES `subjects`(`subject_id`) ON DELETE RESTRICT,
+                CONSTRAINT `fk_se_shifting` FOREIGN KEY (`shifting_request_id`) REFERENCES `shifting_requests`(`id`) ON DELETE SET NULL,
+                INDEX `idx_se_shifting` (`shifting_request_id`),
+                INDEX `idx_se_old` (`old_subject_id`),
+                INDEX `idx_se_new` (`new_subject_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+        ");
+    } catch (\Throwable $e) {
+    }
+}
+
+function ensure_shifting_workflow_columns(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    try {
+        global $pdo;
+        if (!($pdo instanceof PDO)) return;
+
+        $stmt = $pdo->query("SHOW COLUMNS FROM `students` LIKE 'shifting_request_id'");
+        if (!$stmt || !$stmt->fetch()) {
+            $pdo->exec("ALTER TABLE `students` ADD COLUMN `shifting_request_id` INT NULL AFTER `ra10931_override`");
+        }
+    } catch (\Throwable $e) {
+    }
+}
         }
     } catch (\Throwable $e) {
     }

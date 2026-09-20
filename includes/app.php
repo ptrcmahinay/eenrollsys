@@ -10,6 +10,7 @@ require_once __DIR__ . '/migrations.php';
 require_once __DIR__ . '/components/actions.php';
 require_once __DIR__ . '/grading_engine.php';
 require_once __DIR__ . '/fee_engine.php';
+require_once __DIR__ . '/shifting_engine.php';
 require_once __DIR__ . '/../vendor/autoload.php';
 
 define('APP_ROOT', realpath(__DIR__ . '/..') ?: __DIR__ . '/..');
@@ -48,6 +49,10 @@ function db(): PDO
         ensure_fee_items_calculation_type_column();
         ensure_enrollment_request_fees_table();
         ensure_fee_status_column();
+        ensure_shifting_requests_table();
+        ensure_student_program_history_table();
+        ensure_subject_equivalencies_table();
+        ensure_shifting_workflow_columns();
         ensure_grading_engine_tables();
         ensure_grades_term_id_column();
         ensure_offering_term_protection();
