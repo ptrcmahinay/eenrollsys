@@ -87,7 +87,7 @@ function shifting_adviser_review(int $requestId, string $action, string $remark 
         );
 
         $currentDept = fetch_one(
-            'SELECT d.dept_name, d.chair_id FROM programs p INNER JOIN departments d ON d.dept_id = p.department_id WHERE p.programs_id = :pid',
+            'SELECT d.department_name, d.chair_id FROM programs p INNER JOIN departments d ON d.dept_id = p.department_id WHERE p.programs_id = :pid',
             ['pid' => $req['current_program_id']]
         );
         if ($currentDept && $currentDept['chair_id']) {
@@ -133,7 +133,7 @@ function shifting_current_chair_review(int $requestId, string $action, string $r
         );
 
         $targetDept = fetch_one(
-            'SELECT d.dept_name, d.chair_id FROM programs p INNER JOIN departments d ON d.dept_id = p.department_id WHERE p.programs_id = :pid',
+            'SELECT d.department_name, d.chair_id FROM programs p INNER JOIN departments d ON d.dept_id = p.department_id WHERE p.programs_id = :pid',
             ['pid' => $req['target_program_id']]
         );
         if ($targetDept && $targetDept['chair_id']) {
@@ -553,7 +553,7 @@ function get_student_placement(int $studentId, ?int $termId = null): ?array
 {
     if ($termId) {
         return fetch_one(
-            'SELECT sap.*, p.program_code, p.program_name, d.dept_name
+            'SELECT sap.*, p.program_code, p.program_name, d.department_name
              FROM student_academic_placements sap
              INNER JOIN programs p ON p.programs_id = sap.program_id
              INNER JOIN departments d ON d.dept_id = sap.department_id
@@ -564,7 +564,7 @@ function get_student_placement(int $studentId, ?int $termId = null): ?array
     }
 
     return fetch_one(
-        'SELECT sap.*, p.program_code, p.program_name, d.dept_name
+        'SELECT sap.*, p.program_code, p.program_name, d.department_name
          FROM student_academic_placements sap
          INNER JOIN programs p ON p.programs_id = sap.program_id
          INNER JOIN departments d ON d.dept_id = sap.department_id
