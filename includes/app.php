@@ -1335,10 +1335,29 @@ function get_active_term_semester_key(): string
 
 function get_student_program_targets(array $student): array
 {
+    $studentId = (int) ($student['id'] ?? 0);
+    $placement = $studentId > 0 ? get_student_placement($studentId) : null;
+
+    if ($placement) {
+        return [
+            'program_id'      => (int) $placement['program_id'],
+            'year_level'      => (int) $placement['year_level'],
+            'standing'        => (int) $placement['standing'],
+            'enrollment_status' => $placement['enrollment_status'],
+            'curriculum_id'   => $placement['curriculum_id'] ? (int) $placement['curriculum_id'] : null,
+            'advanced_allowed' => $placement['advanced_subject_allowed'] === 'yes',
+            'semester'        => get_active_term_semester_key(),
+        ];
+    }
+
     return [
-        'program_id' => (int) $student['program_id'],
-        'year_level' => (int) $student['year_level'],
-        'semester' => get_active_term_semester_key(),
+        'program_id'      => (int) $student['program_id'],
+        'year_level'      => (int) $student['year_level'],
+        'standing'        => (int) $student['year_level'],
+        'enrollment_status' => student_is_irregular($studentId) ? 'irregular' : 'regular',
+        'curriculum_id'   => null,
+        'advanced_allowed' => false,
+        'semester'        => get_active_term_semester_key(),
     ];
 }
 
@@ -1369,9 +1388,13 @@ function prerequisite_status_for_curriculum(int $studentId, array $curriculumRow
 
     $standing = $curriculumRow['standing'] ?? null;
     if ($standing !== null && $standing !== '') {
-        $student = fetch_one('SELECT year_level FROM students WHERE id = :id', ['id' => $studentId]);
-        if ($student !== null) {
-            $studentYear = (int) $student['year_level'];
+        $placement = get_student_placement($studentId);
+        $studentYear = $placement ? (int) $placement['standing'] : 0;
+        if ($studentYear <= 0) {
+            $student = fetch_one('SELECT year_level FROM students WHERE id = :id', ['id' => $studentId]);
+            $studentYear = $student ? (int) $student['year_level'] : 0;
+        }
+        if ($studentYear > 0) {
             if (stripos($standing, '4th') !== false && $studentYear < 4) {
                 return ['eligible' => false, 'reason' => 'Requires 4th year standing'];
             }
@@ -1435,6 +1458,7 @@ function irregular_offerings_for_student(int $studentId, int $termId): array
         return [];
     }
 
+    $targets = get_student_program_targets($student);
     $gradeLookup = student_grade_lookup($studentId);
     $rows = fetch_all(
          'SELECT o.*,
@@ -1458,7 +1482,7 @@ function irregular_offerings_for_student(int $studentId, int $termId): array
          ORDER BY pc.year_level, sub.subject_code',
         [
             'term_id' => $termId,
-            'program_id' => (int) $student['program_id'],
+            'program_id' => $targets['program_id'],
         ]
     );
 

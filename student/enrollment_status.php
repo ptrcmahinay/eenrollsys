@@ -13,6 +13,9 @@ if ($student === null) {
 $filterTerm = (int) ($_GET['term_id'] ?? 0);
 $filterStatus = trim($_GET['status'] ?? '');
 
+$placement = get_student_placement((int) $student['id']);
+$history = get_student_program_history((int) $student['id']);
+
 $sql = 'SELECT er.*, ay.year_label, t.semester
         FROM enrollment_requests er
         INNER JOIN academic_terms t ON t.id = er.term_id
@@ -43,6 +46,23 @@ ob_start();
         <p>Track adviser, department chair, and registrar approval progress for all requests.</p>
     </div>
 </div>
+
+<?php if ($placement): ?>
+<div class="card" style="margin-bottom:16px;border-left:4px solid var(--primary);">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+            <h3 style="margin:0 0 4px;font-size:14px;">Academic Placement</h3>
+            <div style="font-size:13px;color:#64748b;">
+                <?= h($placement['program_code'] . ' - ' . $placement['program_name']) ?>
+                &middot; <?= (int) $placement['year_level'] ?><?= match((int) $placement['year_level']) { 1 => 'st', 2 => 'nd', 3 => 'rd', default => 'th' } ?> Year
+                &middot; Standing: <?= (int) $placement['standing'] ?><?= match((int) $placement['standing']) { 1 => 'st', 2 => 'nd', 3 => 'rd', default => 'th' } ?>
+                &middot; <span class="badge <?= $placement['enrollment_status'] === 'regular' ? 'success' : 'warning' ?>"><?= h(ucfirst($placement['enrollment_status'])) ?></span>
+            </div>
+        </div>
+        <span class="badge info"><?= h(ucfirst($placement['placement_type'])) ?></span>
+    </div>
+</div>
+<?php endif; ?>
 
 <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
     <form method="get" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">

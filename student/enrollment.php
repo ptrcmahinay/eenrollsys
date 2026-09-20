@@ -12,6 +12,9 @@ if ($student === null || $currentTerm === null) {
     redirect('student/dashboard.php');
 }
 
+$placement = get_student_placement((int) $student['id']);
+$enrollmentYearLevel = $placement ? (int) $placement['year_level'] : (int) $student['year_level'];
+
 $latestRequest = fetch_one(
     'SELECT * FROM enrollment_requests WHERE student_id = :student_id AND term_id = :term_id ORDER BY id DESC LIMIT 1',
     ['student_id' => (int) $student['id'], 'term_id' => (int) $currentTerm['id']]
@@ -37,7 +40,7 @@ if (is_post()) {
     }
 
     if ($action === 'save_draft') {
-        if (!enrollment_is_open((int) $student['year_level'])) {
+        if (!enrollment_is_open($enrollmentYearLevel)) {
             flash('error', 'Online enrollment is currently closed for your year level.');
             redirect('student/enrollment.php');
         }
@@ -227,7 +230,7 @@ if (is_post()) {
     }
 
     if ($action === 'submit_request') {
-        if (!enrollment_is_open((int) $student['year_level'])) {
+        if (!enrollment_is_open($enrollmentYearLevel)) {
             flash('error', 'Online enrollment is currently closed for your year level.');
             redirect('student/enrollment.php');
         }
@@ -331,9 +334,12 @@ if ($resubmitFrom > 0) {
     }
 }
 
+$targets = get_student_program_targets($student);
+$targetProgram = fetch_one('SELECT program_code FROM programs WHERE programs_id = :pid', ['pid' => $targets['program_id']]);
+$targetProgramCode = $targetProgram ? $targetProgram['program_code'] : $student['program_code'];
 $sections = fetch_all(
     'SELECT id, year_level, section_name FROM sections WHERE program_id = :program_id AND year_level = :year_level ORDER BY section_name',
-    ['program_id' => (int) $student['program_id'], 'year_level' => (int) $student['year_level']]
+    ['program_id' => $targets['program_id'], 'year_level' => $targets['year_level']]
 );
 $selectedSectionId = (int) ($_GET['section_id'] ?? ($student['section_id'] ?: ($sections[0]['id'] ?? 0)));
 $recommendedStatus = student_status_recommendation((int) $student['id']);
@@ -360,7 +366,7 @@ if ($resubmitSource) {
 
 $financial = financial_profile($student, $currentTerm);
 $otherFees = (float) setting('other_school_fees', '2500');
-$feeItems = fee_items_for_enrollment((int) $student['program_id'], (int) $student['year_level'], (string) $currentTerm['semester']);
+$feeItems = fee_items_for_enrollment($targets['program_id'], $targets['year_level'], (string) $currentTerm['semester']);
 
 $tuitionPerUnit = 0;
 $labFeeRate = 0;
@@ -504,8 +510,11 @@ ob_start();
                         <div class="item"><div class="k">Student Number</div><div class="v"><?= h($student['student_number']) ?></div></div>
                         <div class="item"><div class="k">Full Name</div><div class="v"><?= h($student['full_name']) ?></div></div>
                         <div class="item"><div class="k">Program</div><div class="v"><?= h($student['program_code']) ?></div></div>
-                        <div class="item"><div class="k">Year Level</div><div class="v"><?= h($student['year_level']) ?></div></div>
-                        <div class="item"><div class="k">Recommended Status</div><div class="v"><span class="badge success"><?= h(ucfirst($recommendedStatus)) ?></span></div></div>
+                        <div class="item"><div class="k">Year Level</div><div class="v"><?= (int) $targets['year_level'] ?><?= match((int) $targets['year_level']) { 1 => 'st', 2 => 'nd', 3 => 'rd', default => 'th' } ?> Year</div></div>
+                        <?php if ($targets['standing'] !== $targets['year_level']): ?>
+                        <div class="item"><div class="k">Standing</div><div class="v"><?= (int) $targets['standing'] ?><?= match((int) $targets['standing']) { 1 => 'st', 2 => 'nd', 3 => 'rd', default => 'th' } ?> Year Standing</div></div>
+                        <?php endif; ?>
+                        <div class="item"><div class="k">Recommended Status</div><div class="v"><span class="badge success"><?= h(ucfirst($targets['enrollment_status'])) ?></span></div></div>
                     </div>
                 </div>
                 <div class="card slim">
@@ -517,7 +526,7 @@ ob_start();
                             <div class="v">
                                 <select name="section_id" id="sectionSelect" required style="width:100%;">
                                     <?php foreach ($sections as $section): ?>
-                                        <option value="<?= h($section['id']) ?>" <?= $selectedSectionId === (int) $section['id'] ? 'selected' : '' ?>><?= h($student['program_code'] . ' ' . $section['year_level'] . '-' . $section['section_name']) ?></option>
+                                        <option value="<?= h($section['id']) ?>" <?= $selectedSectionId === (int) $section['id'] ? 'selected' : '' ?>><?= h($targetProgramCode . ' ' . $section['year_level'] . '-' . $section['section_name']) ?></option>
                                     <?php endforeach; ?>
                                 </select>
                             </div>

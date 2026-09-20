@@ -11,6 +11,8 @@ if ($student === null) {
 }
 
 $currentTerm = current_term();
+$placement = get_student_placement((int) $student['id']);
+$targets = get_student_program_targets($student);
 $currentSubjects = [];
 if ($currentTerm !== null) {
     $currentSubjects = fetch_all(
@@ -156,7 +158,7 @@ ob_start();
 <div class="grid cols-4">
     <div class="card slim"><div class="metric-label">Student Number</div><div class="metric" style="font-size:22px;"><?= h($student['student_number']) ?></div></div>
     <div class="card slim"><div class="metric-label">Program</div><div class="metric" style="font-size:22px;"><?= h($student['program_code']) ?></div></div>
-    <div class="card slim"><div class="metric-label">Year / Section</div><div class="metric" style="font-size:22px;"><?= h($student['year_level'] . ($student['section_name'] ? $student['section_name'] : '')) ?></div></div>
+    <div class="card slim"><div class="metric-label">Year / Standing</div><div class="metric" style="font-size:22px;"><?= (int) $targets['year_level'] ?><?= match((int) $targets['year_level']) { 1 => 'st', 2 => 'nd', 3 => 'rd', default => 'th' } ?> Year<?= $targets['standing'] != $targets['year_level'] ? ' / ' . $targets['standing'] . match((int) $targets['standing']) { 1 => 'st', 2 => 'nd', 3 => 'rd', default => 'th' } . ' Standing' : '' ?></div></div>
     <div class="card slim"><div class="metric-label">RA / Tuition</div><div class="metric" style="font-size:18px;"><?= h($financial['label']) ?></div></div>
 </div>
 <div class="grid cols-2" style="margin-top:16px;">

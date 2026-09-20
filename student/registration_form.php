@@ -56,7 +56,8 @@ $section = fetch_one(
 
 $financial = financial_profile($student, fetch_one('SELECT * FROM academic_terms WHERE id = :tid', ['tid' => (int) $request['term_id']]));
 $otherFees = (float) setting('other_school_fees', '2500');
-$feeItems = fee_items_for_enrollment((int) $student['program_id'], (int) $student['year_level'], (string) $request['semester']);
+$regTargets = get_student_program_targets($student);
+$feeItems = fee_items_for_enrollment($regTargets['program_id'], $regTargets['year_level'], (string) $request['semester']);
 
 $tuitionPerUnit = 0;
 $labFeeRate = 0;
