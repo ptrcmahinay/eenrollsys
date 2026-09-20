@@ -954,6 +954,10 @@ function ensure_composite_indexes(): void
             if (!$stmt || !$stmt->fetch()) {
                 try {
                     $pdo->exec("ALTER TABLE `{$table}` ADD INDEX `{$idx['name']}` {$idx['cols']}");
+                } catch (\Throwable $e) {
+                }
+            }
+        }
     } catch (\Throwable $e) {
     }
 }
@@ -1070,10 +1074,6 @@ function ensure_transferee_subjects_table(): void
                     INDEX `idx_ts_transferee` (`transferee_id`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
             ");
-        }
-    } catch (\Throwable $e) {
-    }
-}
         }
     } catch (\Throwable $e) {
     }
