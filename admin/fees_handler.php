@@ -32,6 +32,7 @@ switch ($action) {
         $category     = trim((string) ($_POST['category'] ?? ''));
         $feeName      = trim((string) ($_POST['fee_name'] ?? ''));
         $amount       = (float) ($_POST['amount'] ?? 0);
+        $calcType     = trim((string) ($_POST['calculation_type'] ?? 'fixed'));
         $programIdFk  = !empty($_POST['program_id_fk']) ? (int) $_POST['program_id_fk'] : null;
         $yearLevel    = !empty($_POST['year_level']) ? (int) $_POST['year_level'] : null;
         $semesterFilt = trim((string) ($_POST['semester_filter'] ?? ''));
@@ -42,18 +43,24 @@ switch ($action) {
             redirectBack();
         }
 
+        $allowedCalcTypes = ['per_unit', 'per_lab_unit', 'fixed', 'per_subject', 'per_student'];
+        if (!in_array($calcType, $allowedCalcTypes, true)) {
+            $calcType = 'fixed';
+        }
+
         if ($feeName === '' || $amount < 0) {
             flash('error', 'Please provide a valid fee name and amount.');
             redirectBack();
         }
 
         execute_sql(
-            'INSERT INTO fee_items (category, fee_name, amount, program_id, year_level, semester, is_mandatory)
-             VALUES (:category, :fee_name, :amount, :program_id, :year_level, :semester, :is_mandatory)',
+            'INSERT INTO fee_items (category, fee_name, amount, calculation_type, program_id, year_level, semester, is_mandatory)
+             VALUES (:category, :fee_name, :amount, :calc_type, :program_id, :year_level, :semester, :is_mandatory)',
             [
                 'category'     => $category,
                 'fee_name'     => $feeName,
                 'amount'       => $amount,
+                'calc_type'    => $calcType,
                 'program_id'   => $programIdFk,
                 'year_level'   => $yearLevel,
                 'semester'     => $semesterFilt ?: null,
@@ -70,6 +77,7 @@ switch ($action) {
         $category     = trim((string) ($_POST['category'] ?? ''));
         $feeName      = trim((string) ($_POST['fee_name'] ?? ''));
         $amount       = (float) ($_POST['amount'] ?? 0);
+        $calcType     = trim((string) ($_POST['calculation_type'] ?? 'fixed'));
         $programIdFk  = !empty($_POST['program_id_fk']) ? (int) $_POST['program_id_fk'] : null;
         $yearLevel    = !empty($_POST['year_level']) ? (int) $_POST['year_level'] : null;
         $semesterFilt = trim((string) ($_POST['semester_filter'] ?? ''));
@@ -85,6 +93,11 @@ switch ($action) {
             redirectBack();
         }
 
+        $allowedCalcTypes = ['per_unit', 'per_lab_unit', 'fixed', 'per_subject', 'per_student'];
+        if (!in_array($calcType, $allowedCalcTypes, true)) {
+            $calcType = 'fixed';
+        }
+
         if ($feeName === '' || $amount < 0) {
             flash('error', 'Please provide a valid fee name and amount.');
             redirectBack();
@@ -92,6 +105,7 @@ switch ($action) {
 
         execute_sql(
             'UPDATE fee_items SET category = :category, fee_name = :fee_name, amount = :amount,
+             calculation_type = :calc_type,
              program_id = :program_id, year_level = :year_level, semester = :semester,
              is_mandatory = :is_mandatory WHERE id = :id',
             [
@@ -99,6 +113,7 @@ switch ($action) {
                 'category'     => $category,
                 'fee_name'     => $feeName,
                 'amount'       => $amount,
+                'calc_type'    => $calcType,
                 'program_id'   => $programIdFk,
                 'year_level'   => $yearLevel,
                 'semester'     => $semesterFilt ?: null,

@@ -1124,6 +1124,84 @@ function ensure_department_chair_column(): void
     }
 }
 
+function ensure_fee_items_calculation_type_column(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    try {
+        global $pdo;
+        if (!($pdo instanceof PDO)) return;
+
+        $stmt = $pdo->query("SHOW COLUMNS FROM `fee_items` LIKE 'calculation_type'");
+        if (!$stmt || !$stmt->fetch()) {
+            $pdo->exec("ALTER TABLE `fee_items` ADD COLUMN `calculation_type` ENUM('per_unit','per_lab_unit','fixed','per_subject','per_student') NOT NULL DEFAULT 'fixed' AFTER `amount`");
+        }
+
+        $stmt2 = $pdo->query("SHOW COLUMNS FROM `fee_items` LIKE 'term_id'");
+        if (!$stmt2 || !$stmt2->fetch()) {
+            $pdo->exec("ALTER TABLE `fee_items` ADD COLUMN `term_id` INT NULL AFTER `semester`");
+            try {
+                $pdo->exec("ALTER TABLE `fee_items` ADD CONSTRAINT `fk_fee_term` FOREIGN KEY (`term_id`) REFERENCES `academic_terms`(`id`) ON DELETE SET NULL");
+            } catch (\Throwable $e) {}
+        }
+    } catch (\Throwable $e) {
+    }
+}
+
+function ensure_enrollment_request_fees_table(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    try {
+        global $pdo;
+        if (!($pdo instanceof PDO)) return;
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS `enrollment_request_fees` (
+                `id`                    INT AUTO_INCREMENT PRIMARY KEY,
+                `enrollment_request_id` INT NOT NULL,
+                `fee_item_id`           INT NULL,
+                `fee_name`              VARCHAR(255) NOT NULL,
+                `category`              ENUM('laboratory','other','assessment') NOT NULL,
+                `calculation_type`      ENUM('per_unit','per_lab_unit','fixed','per_subject','per_student') NOT NULL DEFAULT 'fixed',
+                `quantity`              DECIMAL(10,2) NOT NULL DEFAULT 1.00,
+                `rate`                  DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+                `gross_amount`          DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+                `discount_amount`       DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+                `net_amount`            DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+                `notes`                 TEXT NULL,
+                `created_at`            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT `fk_erf_request` FOREIGN KEY (`enrollment_request_id`) REFERENCES `enrollment_requests`(`id`) ON DELETE CASCADE,
+                CONSTRAINT `fk_erf_fee_item` FOREIGN KEY (`fee_item_id`) REFERENCES `fee_items`(`id`) ON DELETE SET NULL,
+                INDEX `idx_erf_request` (`enrollment_request_id`),
+                INDEX `idx_erf_fee_item` (`fee_item_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+        ");
+    } catch (\Throwable $e) {
+    }
+}
+
+function ensure_fee_status_column(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    try {
+        global $pdo;
+        if (!($pdo instanceof PDO)) return;
+
+        $stmt = $pdo->query("SHOW COLUMNS FROM `enrollment_requests` LIKE 'fee_status'");
+        if (!$stmt || !$stmt->fetch()) {
+            $pdo->exec("ALTER TABLE `enrollment_requests` ADD COLUMN `fee_status` ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending' AFTER `payment_status`");
+        }
+    } catch (\Throwable $e) {
+    }
+}
+
 function ensure_grading_engine_tables(): void
 {
     static $done = false;

@@ -65,11 +65,8 @@ execute_sql(
     ]
 );
 
-$newStatus = $newBalance <= 0 ? 'paid' : 'partial';
-execute_sql(
-    'UPDATE enrollment_requests SET payment_status = :status WHERE id = :id',
-    ['status' => $newStatus, 'id' => $requestId]
-);
+// Derive payment status from actual balance
+$newStatus = sync_payment_status($requestId);
 
 flash('success', 'Payment recorded. ' . ($newStatus === 'paid' ? 'Enrollment is now fully paid.' : 'Remaining balance: ₱' . number_format($newBalance, 2)));
 redirect('cashier/receipt.php?request_id=' . $requestId);

@@ -43,33 +43,39 @@ if (is_post()) {
         $offeringIds = $_POST['offering_ids'] ?? [];
 
         if ($studentId > 0 && $termId > 0 && $sectionId > 0 && !empty($offeringIds)) {
+            // Compute fees using the same engine as normal enrollment
+            $totals = calculate_request_totals($studentId, array_map('intval', $offeringIds));
+            $assessments = compute_enrollment_fees($studentId, array_map('intval', $offeringIds), $termId);
+
             db()->beginTransaction();
             try {
                 execute_sql(
                     'INSERT INTO enrollment_requests (
                         student_id, term_id, requested_section_id, requested_status,
                         workflow_status, adviser_status, chair_status, registrar_status,
-                        payment_status,
+                        payment_status, fee_status,
                         adviser_remark, chair_remark, registrar_remark,
                         ra10931_status, total_units, total_amount,
                         adviser_processed_at, chair_processed_at, registrar_processed_at
                      ) VALUES (
                         :student_id, :term_id, :section_id, "regular",
                         "registrar_approved", "approved", "approved", "approved",
-                        "unpaid",
+                        "unpaid", "approved",
                         "Direct enrollment by registrar", "Direct enrollment by registrar", "Direct enrollment by registrar",
-                        "free", 0, 0,
+                        :ra_status, :total_units, :total_amount,
                         NOW(), NOW(), NOW()
                      )',
                     [
                         'student_id' => $studentId,
                         'term_id' => $termId,
                         'section_id' => $sectionId,
+                        'ra_status' => $totals['financial']['status'],
+                        'total_units' => $totals['units'],
+                        'total_amount' => $totals['amount'],
                     ]
                 );
                 $requestId = (int) db()->lastInsertId();
 
-                $totalUnits = 0;
                 foreach ((array) $offeringIds as $offeringId) {
                     execute_sql(
                         'INSERT INTO enrollment_request_items (request_id, offering_id, action_type) VALUES (:request_id, :offering_id, "add")',
@@ -81,7 +87,6 @@ if (is_post()) {
                         ['id' => (int) $offeringId]
                     );
                     if ($offering) {
-                        $totalUnits += (float) $offering['units'];
                         $exists = fetch_one(
                             'SELECT id FROM student_subjects WHERE student_id = :sid AND term_id = :tid AND offering_id = :oid LIMIT 1',
                             ['sid' => $studentId, 'tid' => $termId, 'oid' => (int) $offeringId]
@@ -100,10 +105,8 @@ if (is_post()) {
                     }
                 }
 
-                execute_sql(
-                    'UPDATE enrollment_requests SET total_units = :tu WHERE id = :rid',
-                    ['tu' => $totalUnits, 'rid' => $requestId]
-                );
+                // Freeze the fee assessment
+                freeze_fee_assessment($requestId, $assessments);
 
                 log_audit($requestId, 'registrar_direct_enroll', 'registrar', null, 'registrar_approved', 'Direct enrollment bypassing workflow');
 
@@ -111,7 +114,7 @@ if (is_post()) {
                 db()->commit();
 
                 $student = fetch_one('SELECT CONCAT(first_name, \' \', IFNULL(middle_name, \'\'), \' \', last_name) AS full_name FROM students WHERE id = :id', ['id' => $studentId]);
-                flash('success', ($student ? $student['full_name'] : 'Student') . ' directly enrolled with ' . $totalUnits . ' units.');
+                flash('success', ($student ? $student['full_name'] : 'Student') . ' directly enrolled with ' . $totals['units'] . ' units. Total assessed: ₱' . number_format($totals['amount'], 2));
                 redirect('registrar/direct_enroll.php');
             } catch (Throwable $e) {
                 db()->rollBack();

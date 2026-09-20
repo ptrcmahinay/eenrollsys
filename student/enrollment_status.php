@@ -168,20 +168,44 @@ ob_start();
 
             <?php if ($request['total_units'] > 0): ?>
                 <div class="card slim" style="margin-top:12px;">
-                    <h4>Tuition Fee Breakdown</h4>
+                    <h4>Fee Assessment Breakdown</h4>
                     <?php
-                        $financial = financial_profile($student, fetch_one('SELECT * FROM academic_terms WHERE id = :tid', ['tid' => (int) $request['term_id']]));
-                        $otherFees = (float) setting('other_school_fees', '2500');
-                        $total = (float) $request['total_amount'] + $otherFees;
+                        $feeSummary = get_frozen_fees_summary((int) $request['id']);
+                        $frozenFees = $feeSummary['fees'];
                     ?>
+                    <?php if ($frozenFees !== []): ?>
                     <div class="kv-list">
-                        <div class="item"><div class="k">Financial Status</div><div class="v"><?= h($financial['label']) ?></div></div>
-                        <div class="item"><div class="k">Units</div><div class="v"><?= h($request['total_units']) ?></div></div>
-                        <div class="item"><div class="k">Tuition per Unit</div><div class="v">₱<?= h(format_money($financial['tuition_per_unit'])) ?></div></div>
-                        <div class="item"><div class="k">Tuition Fee</div><div class="v">₱<?= h(format_money($request['total_amount'])) ?></div></div>
-                        <div class="item"><div class="k">Other Fees</div><div class="v">₱<?= h(format_money($otherFees)) ?></div></div>
-                        <div class="item" style="border-top:2px solid var(--line);padding-top:8px;margin-top:4px;"><div class="k" style="font-weight:700;">Total</div><div class="v" style="font-weight:700;">₱<?= h(format_money($total)) ?></div></div>
+                        <?php foreach ($feeSummary['breakdown'] as $cat => $group): ?>
+                            <?php if ($group['items'] !== []): ?>
+                            <div class="item" style="background:#f8fafc;"><div class="k" style="font-weight:600;color:var(--ink);text-transform:capitalize;"><?= h($cat) ?> Fees</div><div class="v"></div></div>
+                            <?php foreach ($group['items'] as $f): ?>
+                            <div class="item">
+                                <div class="k" style="padding-left:12px;"><?= h($f['fee_name']) ?>
+                                    <?php if ((float) $f['discount_amount'] > 0): ?>
+                                    <br><span style="font-size:11px;color:#16a34a;">RA 10931 — Fully subsidized</span>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="v">
+                                    <?php if ((float) $f['discount_amount'] > 0): ?>
+                                    <span style="text-decoration:line-through;color:#94a3b8;margin-right:4px;">₱<?= h(format_money($f['gross_amount'])) ?></span>
+                                    <span style="color:#16a34a;">₱<?= h(format_money($f['net_amount'])) ?></span>
+                                    <?php else: ?>
+                                    ₱<?= h(format_money($f['net_amount'])) ?>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                            <?php endforeach; ?>
+                            <?php endif; ?>
+                        <?php endforeach; ?>
+                        <?php if ($feeSummary['has_discount']): ?>
+                        <div class="item" style="background:#f0fdf4;"><div class="k">Total Gross</div><div class="v">₱<?= h(format_money($feeSummary['total_gross'])) ?></div></div>
+                        <div class="item" style="background:#f0fdf4;"><div class="k" style="color:#16a34a;">Total Discount</div><div class="v" style="color:#16a34a;">-₱<?= h(format_money($feeSummary['total_discount'])) ?></div></div>
+                        <?php endif; ?>
+                        <div class="item" style="border-top:2px solid var(--line);padding-top:8px;margin-top:4px;"><div class="k" style="font-weight:700;">Total Assessed</div><div class="v" style="font-weight:700;">₱<?= h(format_money($feeSummary['total_net'])) ?></div></div>
                     </div>
+                    <?php else: ?>
+                    <p class="helper">No fee breakdown available for this request.</p>
+                    <?php endif; ?>
                 </div>
             <?php endif; ?>
         </div>

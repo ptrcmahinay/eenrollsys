@@ -9,6 +9,7 @@ require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/migrations.php';
 require_once __DIR__ . '/components/actions.php';
 require_once __DIR__ . '/grading_engine.php';
+require_once __DIR__ . '/fee_engine.php';
 require_once __DIR__ . '/../vendor/autoload.php';
 
 define('APP_ROOT', realpath(__DIR__ . '/..') ?: __DIR__ . '/..');
@@ -44,6 +45,9 @@ function db(): PDO
         ensure_composite_indexes();
         ensure_department_chair_column();
         ensure_subject_teaching_department_column();
+        ensure_fee_items_calculation_type_column();
+        ensure_enrollment_request_fees_table();
+        ensure_fee_status_column();
         ensure_grading_engine_tables();
         ensure_grades_term_id_column();
         ensure_offering_term_protection();
@@ -1621,12 +1625,12 @@ function create_enrollment_request(int $studentId, int $termId, int $sectionId, 
             student_id, term_id, requested_section_id, requested_status,
             workflow_status, adviser_status, chair_status, registrar_status,
             adviser_remark, chair_remark, registrar_remark,
-            ra10931_status, total_units, total_amount
+            ra10931_status, total_units, total_amount, fee_status
          ) VALUES (
             :student_id, :term_id, :section_id, :requested_status,
             "submitted", "pending", "pending", "pending",
             "", "", "",
-            :ra_status, :total_units, :total_amount
+            :ra_status, :total_units, :total_amount, "pending"
          )',
         [
             'student_id' => $studentId,
@@ -1646,6 +1650,10 @@ function create_enrollment_request(int $studentId, int $termId, int $sectionId, 
             ['request_id' => $requestId, 'offering_id' => $offeringId]
         );
     }
+
+    // Freeze the complete fee assessment into enrollment_request_fees
+    $assessments = compute_enrollment_fees($studentId, $offeringIds, $termId);
+    freeze_fee_assessment($requestId, $assessments);
 
     log_audit($requestId, 'student_submit', 'student', null, 'submitted', null);
 
@@ -1673,12 +1681,12 @@ function create_enrollment_request_draft(int $studentId, int $termId, int $secti
             student_id, term_id, requested_section_id, requested_status,
             workflow_status, adviser_status, chair_status, registrar_status,
             adviser_remark, chair_remark, registrar_remark,
-            ra10931_status, total_units, total_amount
+            ra10931_status, total_units, total_amount, fee_status
          ) VALUES (
             :student_id, :term_id, :section_id, :requested_status,
             "draft", "pending", "pending", "pending",
             "", "", "",
-            :ra_status, :total_units, :total_amount
+            :ra_status, :total_units, :total_amount, "pending"
          )',
         [
             'student_id' => $studentId,
@@ -1698,6 +1706,10 @@ function create_enrollment_request_draft(int $studentId, int $termId, int $secti
             ['request_id' => $requestId, 'offering_id' => $offeringId]
         );
     }
+
+    // Freeze the fee assessment even for drafts
+    $assessments = compute_enrollment_fees($studentId, $offeringIds, $termId);
+    freeze_fee_assessment($requestId, $assessments);
 
     return $requestId;
 }
@@ -2069,7 +2081,7 @@ function forward_to_cashier(int $requestId): void
     if (!$req || $req['workflow_status'] !== 'chair_approved') return;
 
     execute_sql(
-        'UPDATE enrollment_requests SET workflow_status = "registrar_forwarded", payment_status = "unpaid", updated_at = NOW() WHERE id = :id',
+        'UPDATE enrollment_requests SET workflow_status = "registrar_forwarded", payment_status = "unpaid", fee_status = "pending", updated_at = NOW() WHERE id = :id',
         ['id' => $requestId]
     );
     log_audit($requestId, 'registrar_forward', 'registrar', 'chair_approved', 'registrar_forwarded', null);
@@ -2090,7 +2102,7 @@ function cashier_approve_request(int $requestId): void
     if (!$req || $req['workflow_status'] !== 'registrar_forwarded') return;
 
     execute_sql(
-        'UPDATE enrollment_requests SET workflow_status = "cashier_approved", payment_status = "paid", cashier_processed_at = NOW(), cashier_processed_by = :uid, updated_at = NOW() WHERE id = :id',
+        'UPDATE enrollment_requests SET workflow_status = "cashier_approved", fee_status = "approved", payment_status = "unpaid", cashier_processed_at = NOW(), cashier_processed_by = :uid, updated_at = NOW() WHERE id = :id',
         ['id' => $requestId, 'uid' => (int) ($_SESSION['user_id'] ?? 0)]
     );
     log_audit($requestId, 'cashier_approve', 'cashier', 'registrar_forwarded', 'cashier_approved', null);

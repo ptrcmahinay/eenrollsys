@@ -22,7 +22,7 @@ $tab = trim((string) ($_GET['tab'] ?? 'approval'));
 
 /* ── Pending approval (registrar_forwarded) ── */
 $pendingApproval = fetch_all(
-    "SELECT er.id, er.total_amount, er.ra10931_status,
+    "SELECT er.id, er.total_amount, er.ra10931_status, er.fee_status,
             s.student_number, CONCAT(s.first_name, \' \', IFNULL(s.middle_name, \'\'), \' \', s.last_name) AS full_name, s.year_level,
             p.program_code, p.lab_fee_per_unit,
             ay.year_label, t.semester

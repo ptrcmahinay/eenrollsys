@@ -71,6 +71,40 @@ ob_start();
 
     <div class="card">
         <h3 style="margin:0 0 12px;font-size:15px;">Payment Summary</h3>
+        <?php
+            $feeSummary = get_frozen_fees_summary($requestId);
+        ?>
+        <?php if ($feeSummary['fees'] !== []): ?>
+        <div style="font-size:12px;color:#374151;margin-bottom:12px;">
+            <?php foreach ($feeSummary['breakdown'] as $cat => $group): ?>
+                <?php if ($group['items'] !== []): ?>
+                <div style="font-weight:600;text-transform:capitalize;margin-top:8px;"><?= h($cat) ?></div>
+                <?php foreach ($group['items'] as $f): ?>
+                <div style="display:flex;justify-content:space-between;padding:2px 0 2px 8px;">
+                    <span><?= h($f['fee_name']) ?>
+                        <?php if ((float) $f['discount_amount'] > 0): ?>
+                        <span style="color:#16a34a;font-size:10px;">(RA 10931)</span>
+                        <?php endif; ?>
+                    </span>
+                    <span style="white-space:nowrap;">
+                        <?php if ((float) $f['discount_amount'] > 0): ?>
+                        <span style="text-decoration:line-through;color:#94a3b8;">₱<?= h(format_money($f['gross_amount'])) ?></span>
+                        <span style="color:#16a34a;margin-left:4px;">₱<?= h(format_money($f['net_amount'])) ?></span>
+                        <?php else: ?>
+                        ₱<?= h(format_money($f['net_amount'])) ?>
+                        <?php endif; ?>
+                    </span>
+                </div>
+                <?php endforeach; ?>
+                <?php endif; ?>
+            <?php endforeach; ?>
+        </div>
+        <?php if ($feeSummary['has_discount']): ?>
+        <div style="font-size:11px;color:#16a34a;margin-bottom:8px;">
+            Total Discount (RA 10931): -₱<?= h(format_money($feeSummary['total_discount'])) ?>
+        </div>
+        <?php endif; ?>
+        <?php endif; ?>
         <div style="font-size:13px;line-height:2;color:#374151;">
             <div><strong>Total Due:</strong> <span style="float:right;">₱<?= h(format_money($enrollment['total_amount'])) ?></span></div>
             <div><strong>Total Paid:</strong> <span style="float:right;color:#16a34a;">₱<?= h(format_money($totalPaid)) ?></span></div>

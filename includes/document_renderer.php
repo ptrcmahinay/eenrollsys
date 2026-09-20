@@ -68,18 +68,30 @@ function render_registration_form_document(int $studentId, int $termId): void
     $student = $data['student'];
     $rows = $data['rows'];
 
-    $labFeePerUnit = lab_fee_per_unit((int) $student['program_id']);
-    $feeItems = fee_items_for_enrollment((int) $student['program_id'], (int) $student['year_level'], (string) $student['semester']);
-    $labFee = $labFeePerUnit * $data['total_lab_credits'];
+    // Try to use frozen fee assessment from enrollment_request_fees
+    $requestId = (int) (fetch_one(
+        'SELECT id FROM enrollment_requests WHERE student_id = :sid AND term_id = :tid ORDER BY id DESC LIMIT 1',
+        ['sid' => $studentId, 'tid' => $termId]
+    )['id'] ?? 0);
 
-    $feeCatTotals = ['laboratory' => 0.0, 'other' => 0.0, 'assessment' => 0.0];
-    foreach ($feeItems as $cat => $items) {
-        foreach ($items as $fi) {
-            $feeCatTotals[$cat] += (float) $fi['amount'];
+    $feeSummary = $requestId > 0 ? get_frozen_fees_summary($requestId) : null;
+    $hasFrozenFees = $feeSummary && $feeSummary['fees'] !== [];
+
+    // Fallback to old calculation for backward compatibility
+    if (!$hasFrozenFees) {
+        $labFeePerUnit = lab_fee_per_unit((int) $student['program_id']);
+        $feeItems = fee_items_for_enrollment((int) $student['program_id'], (int) $student['year_level'], (string) $student['semester']);
+        $labFee = $labFeePerUnit * $data['total_lab_credits'];
+
+        $feeCatTotals = ['laboratory' => 0.0, 'other' => 0.0, 'assessment' => 0.0];
+        foreach ($feeItems as $cat => $items) {
+            foreach ($items as $fi) {
+                $feeCatTotals[$cat] += (float) $fi['amount'];
+            }
         }
+        $totalFeeItemsAmount = array_sum($feeCatTotals);
+        $newTotalAmount = $data['total_amount'] + $labFee + $totalFeeItemsAmount;
     }
-    $totalFeeItemsAmount = array_sum($feeCatTotals);
-    $newTotalAmount = $data['total_amount'] + $labFee + $totalFeeItemsAmount;
 
     ob_start();
     ?>
@@ -129,6 +141,77 @@ function render_registration_form_document(int $studentId, int $termId): void
         </tbody>
     </table>
 
+    <?php if ($hasFrozenFees): ?>
+    <div class="doc-summary">
+        <div>
+            <table class="doc-table">
+                <tr><th>Total Units</th><td class="text-right"><?= h(format_money($data['total_units'])) ?></td></tr>
+                <?php foreach ($feeSummary['breakdown'] as $cat => $group): ?>
+                    <?php if ($group['items'] !== []): ?>
+                    <tr><th style="text-transform:capitalize;"><?= h($cat) ?> Fees</th><td class="text-right">&#8369;<?= h(format_money($group['subtotal'])) ?></td></tr>
+                    <?php endif; ?>
+                <?php endforeach; ?>
+                <?php if ($feeSummary['has_discount']): ?>
+                <tr><th style="color:#16a34a;">Discount (RA 10931)</th><td class="text-right" style="color:#16a34a;">-&#8369;<?= h(format_money($feeSummary['total_discount'])) ?></td></tr>
+                <?php endif; ?>
+                <tr><th>Total Amount</th><td class="text-right"><strong>&#8369;<?= h(format_money($feeSummary['total_net'])) ?></strong></td></tr>
+            </table>
+        </div>
+        <div>
+            <table class="doc-table">
+                <tr><th>Scholarship / Status</th><td><?= h($data['financial']['label']) ?></td></tr>
+                <tr><th>Registrar Name</th><td><?= h(setting('registrar_name', 'Campus Registrar')) ?></td></tr>
+                <tr><th>Portal</th><td><?= h(setting('system_name', 'E-Enrollment System')) ?></td></tr>
+                <tr><th>Note</th><td>Your slot is final after registrar approval and payment processing.</td></tr>
+            </table>
+        </div>
+    </div>
+
+    <?php if ($feeSummary['fees'] !== []): ?>
+    <h3 style="font-size:13px;font-weight:700;color:#16a34a;margin:14px 0 8px;padding-bottom:4px;border-bottom:2px solid #bbf7d0;">Fee Breakdown</h3>
+    <table class="doc-table">
+        <thead>
+            <tr>
+                <th>Laboratory Fees</th>
+                <th>Other Fees</th>
+                <th>Assessment Fees</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>
+                    <?php foreach ($feeSummary['breakdown']['laboratory']['items'] as $fi): ?>
+                        <div>&#8369;<?= h(format_money((float) $fi['net_amount'])) ?> — <?= h($fi['fee_name']) ?></div>
+                    <?php endforeach; ?>
+                    <?php if ($feeSummary['breakdown']['laboratory']['subtotal'] > 0): ?>
+                        <div style="font-weight:700;color:#16a34a;border-top:1px solid #bbf7d0;margin-top:4px;padding-top:4px;">Total: &#8369;<?= h(format_money($feeSummary['breakdown']['laboratory']['subtotal'])) ?></div>
+                    <?php endif; ?>
+                </td>
+                <td>
+                    <?php foreach ($feeSummary['breakdown']['other']['items'] as $fi): ?>
+                        <div>&#8369;<?= h(format_money((float) $fi['net_amount'])) ?> — <?= h($fi['fee_name']) ?></div>
+                    <?php endforeach; ?>
+                    <?php if ($feeSummary['breakdown']['other']['subtotal'] > 0): ?>
+                        <div style="font-weight:700;color:#16a34a;border-top:1px solid #bbf7d0;margin-top:4px;padding-top:4px;">Total: &#8369;<?= h(format_money($feeSummary['breakdown']['other']['subtotal'])) ?></div>
+                    <?php endif; ?>
+                </td>
+                <td>
+                    <?php foreach ($feeSummary['breakdown']['assessment']['items'] as $fi): ?>
+                        <div>&#8369;<?= h(format_money((float) $fi['net_amount'])) ?> — <?= h($fi['fee_name']) ?>
+                            <?php if ((float) $fi['discount_amount'] > 0): ?>
+                            <span style="color:#16a34a;font-size:9px;">(RA 10931)</span>
+                            <?php endif; ?>
+                        </div>
+                    <?php endforeach; ?>
+                    <?php if ($feeSummary['breakdown']['assessment']['subtotal'] > 0): ?>
+                        <div style="font-weight:700;color:#16a34a;border-top:1px solid #bbf7d0;margin-top:4px;padding-top:4px;">Total: &#8369;<?= h(format_money($feeSummary['breakdown']['assessment']['subtotal'])) ?></div>
+                    <?php endif; ?>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    <?php endif; ?>
+    <?php else: ?>
     <div class="doc-summary">
         <div>
             <table class="doc-table">
@@ -191,6 +274,7 @@ function render_registration_form_document(int $studentId, int $termId): void
             </tr>
         </tbody>
     </table>
+    <?php endif; ?>
     <?php endif; ?>
 
     $registrarSig = setting('registrar_signature', '');

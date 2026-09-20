@@ -154,6 +154,7 @@ ob_start();
                         <?php if ($fee['is_mandatory']): ?>
                         <span style="color:var(--warning);">Mandatory</span>
                         <?php endif; ?>
+                        <span style="color:var(--info);"><?= h(str_replace('_', ' ', $fee['calculation_type'] ?? 'fixed')) ?></span>
                         <?php if ($fee['program_id'] === null): ?>
                         <span>All programs</span>
                         <?php endif; ?>
@@ -246,6 +247,16 @@ foreach ($feeItems as $fee):
             <input type="number" name="amount" step="0.01" min="0" value="<?= h($fee['amount']) ?>" required>
         </div>
         <div>
+            <label>Calculation Type</label>
+            <select name="calculation_type">
+                <?php
+                $calcTypes = ['fixed' => 'Fixed Amount', 'per_unit' => 'Per Unit', 'per_lab_unit' => 'Per Lab Unit', 'per_subject' => 'Per Subject', 'per_student' => 'Per Student'];
+                foreach ($calcTypes as $v => $l): ?>
+                <option value="<?= h($v) ?>" <?= ($fee['calculation_type'] ?? 'fixed') === $v ? 'selected' : '' ?>><?= h($l) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div>
             <label>Program</label>
             <select name="program_id_fk">
                 <option value="">All Programs</option>
@@ -312,6 +323,16 @@ ob_start();
         <div>
             <label>Amount (₱)</label>
             <input type="number" name="amount" id="addAmount" step="0.01" min="0" required>
+        </div>
+        <div>
+            <label>Calculation Type</label>
+            <select name="calculation_type" id="addCalcType">
+                <option value="fixed">Fixed Amount</option>
+                <option value="per_unit">Per Unit</option>
+                <option value="per_lab_unit">Per Lab Unit</option>
+                <option value="per_subject">Per Subject</option>
+                <option value="per_student">Per Student</option>
+            </select>
         </div>
         <div>
             <label>Year Level</label>
