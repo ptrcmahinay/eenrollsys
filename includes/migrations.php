@@ -1043,8 +1043,6 @@ function ensure_leave_of_absence_table(): void
                     `remarks`                   TEXT NULL,
                     `created_at`                TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     `updated_at`                TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    CONSTRAINT `fk_loa_student` FOREIGN KEY (`student_id`) REFERENCES `students`(`id`) ON DELETE CASCADE,
-                    CONSTRAINT `fk_loa_program` FOREIGN KEY (`program_id`) REFERENCES `programs`(`programs_id`) ON DELETE RESTRICT,
                     INDEX `idx_loa_student` (`student_id`),
                     INDEX `idx_loa_status` (`status`),
                     INDEX `idx_loa_acad_year` (`academic_year`, `semester`)
@@ -1075,8 +1073,6 @@ function ensure_student_term_status_table(): void
                     `status`        ENUM('active','on_leave','withdrawn','graduated') NOT NULL DEFAULT 'active',
                     `updated_by`    INT NULL,
                     `updated_at`    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    CONSTRAINT `fk_sts_student` FOREIGN KEY (`student_id`) REFERENCES `students`(`id`) ON DELETE CASCADE,
-                    CONSTRAINT `fk_sts_term` FOREIGN KEY (`term_id`) REFERENCES `academic_terms`(`id`) ON DELETE RESTRICT,
                     UNIQUE KEY `uq_sts_student_term` (`student_id`, `term_id`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
             ");
