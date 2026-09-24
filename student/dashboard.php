@@ -142,6 +142,8 @@ $chartData = [
     'completionPct' => $completionPct,
 ];
 
+$activeLoa = get_active_loa_for_student((int) $student['id']);
+
 ob_start();
 ?>
 <div class="page-header">
@@ -154,6 +156,25 @@ ob_start();
         <a class="btn secondary" href="<?= h(app_url('student/grades.php')) ?>">Grades / COG</a>
     </div>
 </div>
+
+<?php if ($activeLoa): ?>
+<div class="card" style="border-left:4px solid #f59e0b;background:#fffbeb;margin-bottom:16px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+        <span class="material-symbols-outlined" style="font-size:28px;color:#f59e0b;">event_busy</span>
+        <div>
+            <div style="font-weight:600;color:#92400e;">You are currently on Leave of Absence</div>
+            <div style="font-size:13px;color:#78350f;">
+                Applied for: <?= get_semester_label($activeLoa['semester']) ?> AY <?= h($activeLoa['academic_year']) ?>
+                &middot; Effective: <?= h(date('M j', strtotime($activeLoa['effective_date_from']))) ?> – <?= h(date('M j, Y', strtotime($activeLoa['effective_date_to']))) ?>
+                <?php if ($activeLoa['expected_return_semester']): ?>
+                &middot; Expected Return: <?= get_semester_label($activeLoa['expected_return_semester']) ?> <?= h($activeLoa['expected_return_academic_year'] ?? '') ?>
+                <?php endif; ?>
+            </div>
+            <div style="font-size:12px;color:#a16207;margin-top:4px;">Enrollment is suspended until you return. Please visit the Registrar's office for inquiries.</div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <div class="grid cols-4">
     <div class="card slim"><div class="metric-label">Student Number</div><div class="metric" style="font-size:22px;"><?= h($student['student_number']) ?></div></div>
