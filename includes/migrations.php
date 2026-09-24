@@ -954,9 +954,131 @@ function ensure_composite_indexes(): void
             if (!$stmt || !$stmt->fetch()) {
                 try {
                     $pdo->exec("ALTER TABLE `{$table}` ADD INDEX `{$idx['name']}` {$idx['cols']}");
+    } catch (\Throwable $e) {
+    }
+}
+
+function ensure_student_extended_fields(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    try {
+        global $pdo;
+        if (!($pdo instanceof PDO)) return;
+
+        $cols = [
+            'profile_photo'      => "ADD COLUMN `profile_photo` VARCHAR(255) NULL",
+            'religion'           => "ADD COLUMN `religion` VARCHAR(100) NULL",
+            'nationality'        => "ADD COLUMN `nationality` VARCHAR(100) NULL DEFAULT 'Filipino'",
+            'civil_status'       => "ADD COLUMN `civil_status` ENUM('Single','Married','Widowed','Separated','Divorced') NULL DEFAULT 'Single'",
+            'barangay'           => "ADD COLUMN `barangay` VARCHAR(150) NULL",
+            'municipality'       => "ADD COLUMN `municipality` VARCHAR(150) NULL",
+            'province'           => "ADD COLUMN `province` VARCHAR(150) NULL",
+            'landline_no'        => "ADD COLUMN `landline_no` VARCHAR(20) NULL",
+            'photo_path'         => "ADD COLUMN `photo_path` VARCHAR(255) NULL",
+        ];
+
+        $existing = [];
+        $stmt = $pdo->query("SHOW COLUMNS FROM `students`");
+        if ($stmt) {
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $existing[] = $row['Field'];
+            }
+        }
+
+        foreach ($cols as $field => $ddl) {
+            if (!in_array($field, $existing, true)) {
+                try {
+                    $pdo->exec("ALTER TABLE `students` {$ddl}");
                 } catch (\Throwable $e) {
                 }
             }
+        }
+
+        $stmt = $pdo->query("SHOW COLUMNS FROM `students` LIKE 'classification'");
+        if ($stmt && $row = $stmt->fetch()) {
+            $type = $row['Type'] ?? '';
+            if (strpos($type, 'cross_enrollee') === false) {
+                try {
+                    $pdo->exec("ALTER TABLE `students` MODIFY COLUMN `classification` ENUM('New','Continuing','Transferee','Cross Enrollee','Shiftee','Returnee') NULL");
+                } catch (\Throwable $e) {
+                }
+            }
+        }
+    } catch (\Throwable $e) {
+    }
+}
+
+function ensure_student_educational_background_table(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    try {
+        global $pdo;
+        if (!($pdo instanceof PDO)) return;
+
+        $stmt = $pdo->query("SHOW TABLES LIKE 'student_educational_background'");
+        if (!$stmt || !$stmt->fetch()) {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `student_educational_background` (
+                    `id`                            INT AUTO_INCREMENT PRIMARY KEY,
+                    `student_id`                    INT NOT NULL,
+                    `elementary_school`             VARCHAR(255) NULL,
+                    `elementary_year_graduated`     INT NULL,
+                    `elementary_school_type`        ENUM('public','private') NULL,
+                    `high_school`                   VARCHAR(255) NULL,
+                    `high_school_year_graduated`    INT NULL,
+                    `high_school_school_type`       ENUM('public','private') NULL,
+                    `last_school_attended`          VARCHAR(255) NULL,
+                    `last_school_address`           VARCHAR(255) NULL,
+                    `last_school_program`           VARCHAR(255) NULL,
+                    `last_school_year_last_attended` INT NULL,
+                    `created_at`                    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at`                    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX `idx_seb_student` (`student_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+            ");
+        }
+    } catch (\Throwable $e) {
+    }
+}
+
+function ensure_student_guardians_table(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    try {
+        global $pdo;
+        if (!($pdo instanceof PDO)) return;
+
+        $stmt = $pdo->query("SHOW TABLES LIKE 'student_guardians'");
+        if (!$stmt || !$stmt->fetch()) {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `student_guardians` (
+                    `id`            INT AUTO_INCREMENT PRIMARY KEY,
+                    `student_id`    INT NOT NULL,
+                    `guardian_type` ENUM('parent','guardian','other') NOT NULL DEFAULT 'parent',
+                    `name`          VARCHAR(255) NOT NULL,
+                    `address`       VARCHAR(255) NULL,
+                    `occupation`    VARCHAR(150) NULL,
+                    `landline_no`   VARCHAR(20) NULL,
+                    `cellphone_no`  VARCHAR(20) NULL,
+                    `is_emergency`  TINYINT(1) NOT NULL DEFAULT 0,
+                    `created_at`    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at`    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX `idx_sg_student` (`student_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+            ");
+        }
+    } catch (\Throwable $e) {
+    }
+}
         }
     } catch (\Throwable $e) {
     }
