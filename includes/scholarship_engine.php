@@ -473,6 +473,7 @@ function check_fhe_eligibility(int $studentId, ?array $student = null, ?array $t
     $yearLevel = (int) $student['year_level'];
 
     $allowedSemesters = (int) $fheSettings['max_allowed_semesters'];
+    $prescribedYears = get_program_duration($programId);
 
     $enrolledTerms = fetch_all(
         'SELECT DISTINCT er.term_id
