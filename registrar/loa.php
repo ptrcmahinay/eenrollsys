@@ -126,11 +126,14 @@ $selectedLoa = null;
 if ($viewId > 0) {
     $selectedLoa = fetch_one(
         'SELECT loa.*, s.student_number, CONCAT(s.first_name, " ", IFNULL(s.middle_name, ""), " ", s.last_name) AS full_name,
-                p.program_name, d.department_name
+                p.program_name, d.department_name,
+                COALESCE(st.full_name, u.username, u.email) AS encoded_by_name
          FROM leave_of_absence loa
          INNER JOIN students s ON s.id = loa.student_id
          INNER JOIN programs p ON p.programs_id = loa.program_id
          LEFT JOIN departments d ON d.dept_id = p.department_id
+         LEFT JOIN users u ON u.users_id = loa.encoded_by
+         LEFT JOIN staff st ON st.users_id = u.users_id
          WHERE loa.id = :id',
         ['id' => $viewId]
     );
@@ -264,7 +267,7 @@ ob_start();
         <span style="font-weight:600;">Reason:</span><span><?= h($selectedLoa['reason'] ?: '—') ?></span>
         <span style="font-weight:600;">Expected Return:</span><span><?= $selectedLoa['expected_return_semester'] ? get_semester_label($selectedLoa['expected_return_semester']) . ' AY ' . h($selectedLoa['expected_return_academic_year'] ?? '') : '—' ?></span>
         <span style="font-weight:600;">Status:</span><span><?php $bc = match($selectedLoa['status']) { 'active' => 'badge warning', 'returned' => 'badge success', 'extended' => 'badge info', 'expired' => 'badge danger', 'cancelled' => 'badge', default => 'badge' }; ?><span class="<?= $bc ?>"><?= h(ucfirst($selectedLoa['status'])) ?></span></span>
-        <span style="font-weight:600;">Encoded By:</span><span><?= h($selectedLoa['encoded_by'] ?? '—') ?></span>
+        <span style="font-weight:600;">Encoded By:</span><span><?= h($selectedLoa['encoded_by_name'] ?? '—') ?></span>
         <span style="font-weight:600;">Encoded At:</span><span><?= h(date('F j, Y g:i A', strtotime($selectedLoa['encoded_at']))) ?></span>
         <?php if ($selectedLoa['returned_at']): ?>
         <span style="font-weight:600;">Returned At:</span><span><?= h(date('F j, Y g:i A', strtotime($selectedLoa['returned_at']))) ?></span>
