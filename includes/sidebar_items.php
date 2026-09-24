@@ -79,7 +79,7 @@ switch ($role) {
             ['label' => 'Transferee Processing', 'path' => 'registrar/transferee.php', 'icon' => 'transfer_within_a_station'],
             ['type' => 'header', 'label' => 'Documents'],
             ['label' => 'TOR Requests', 'path' => 'registrar/tor.php', 'icon' => 'description'],
-            ['label' => 'LOA Requests', 'path' => 'registrar/loa.php', 'icon' => 'event_busy'],
+            ['label' => 'Leave of Absence', 'path' => 'registrar/loa.php', 'icon' => 'event_busy'],
             ['label' => 'Verify Document', 'path' => 'registrar/verify_document.php', 'icon' => 'verified'],
             ['type' => 'divider'],
             ['type' => 'header', 'label' => 'Grading'],
@@ -161,7 +161,6 @@ switch ($role) {
             ['label' => 'Enrollment Status', 'path' => 'student/enrollment_status.php','icon' => 'track_changes'],
             ['label' => 'Shifting Request',  'path' => 'student/shifting.php',         'icon' => 'swap_horiz'],
             ['label' => 'TOR Request',       'path' => 'student/tor.php',              'icon' => 'description'],
-            ['label' => 'Leave of Absence',  'path' => 'student/loa.php',              'icon' => 'event_busy'],
         ];
         if ($currentUser !== null && $currentUser['student_id'] > 0 && student_is_irregular((int) $currentUser['student_id'])) {
             $menu[] = ['label' => 'Add/Drop Subjects', 'path' => 'student/add_drop.php', 'icon' => 'edit_note'];

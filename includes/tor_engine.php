@@ -223,15 +223,3 @@ function verify_tor_document(string $docNumber): ?array
     );
     return $req;
 }
-
-function is_student_on_leave(int $studentId): bool
-{
-    $student = fetch_one('SELECT academic_status FROM students WHERE id = :id', ['id' => $studentId]);
-    if ($student && $student['academic_status'] === 'on_leave') return true;
-
-    $activeLoa = fetch_one(
-        'SELECT id FROM loa_requests WHERE student_id = :sid AND workflow_status = "approved" AND term_id = :tid LIMIT 1',
-        ['sid' => $studentId, 'tid' => (int) (current_term()['id'] ?? 0)]
-    );
-    return $activeLoa !== null;
-}

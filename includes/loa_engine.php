@@ -2,206 +2,287 @@
 declare(strict_types=1);
 
 /**
- * Leave of Absence (LOA) Engine
+ * Leave of Absence (LOA) Engine — Registrar-Only
  *
- * Handles LOA request workflow, return processing, and enrollment blocking.
+ * Handles LOA record entry, monitoring, return processing, and extension.
+ * Students do NOT submit LOA through the system; the Registrar encodes
+ * official LOA forms submitted to the office.
  */
 
-function create_loa_request(
+function create_loa_record(
     int $studentId,
-    int $termId,
-    string $reasonCategory,
-    ?string $reasonDetail = null,
-    ?int $expectedReturnTermId = null
+    string $studentNo,
+    string $programId,
+    ?int $departmentId,
+    string $dateFiled,
+    string $semester,
+    string $academicYear,
+    string $effectiveFrom,
+    string $effectiveTo,
+    ?string $reason,
+    ?string $expectedReturnSemester,
+    ?string $expectedReturnAcademicYear,
+    int $encodedBy,
+    ?string $remarks = null
 ): int {
-    $existing = fetch_one(
-        'SELECT id FROM loa_requests WHERE student_id = :sid AND term_id = :tid AND workflow_status NOT IN ("rejected","cancelled","returned") LIMIT 1',
-        ['sid' => $studentId, 'tid' => $termId]
-    );
-    if ($existing) return (int) $existing['id'];
-
     execute_sql(
-        'INSERT INTO loa_requests (student_id, term_id, reason_category, reason_detail, expected_return_term_id, workflow_status, created_at)
-         VALUES (:sid, :tid, :cat, :detail, :ret_tid, "submitted", NOW())',
+        'INSERT INTO leave_of_absence
+            (student_id, student_no, program_id, department_id, date_filed,
+             semester, academic_year, effective_date_from, effective_date_to,
+             reason, expected_return_semester, expected_return_academic_year,
+             status, encoded_by, encoded_at, remarks, created_at)
+         VALUES
+            (:sid, :sno, :pid, :did, :df,
+             :sem, :ay, :edfrom, :edto,
+             :reason, :ret_sem, :ret_ay,
+             "active", :uid, NOW(), :remarks, NOW())',
         [
             'sid'      => $studentId,
-            'tid'      => $termId,
-            'cat'      => $reasonCategory,
-            'detail'   => $reasonDetail,
-            'ret_tid'  => $expectedReturnTermId,
+            'sno'      => $studentNo,
+            'pid'      => $programId,
+            'did'      => $departmentId,
+            'df'       => $dateFiled,
+            'sem'      => $semester,
+            'ay'       => $academicYear,
+            'edfrom'   => $effectiveFrom,
+            'edto'     => $effectiveTo,
+            'reason'   => $reason,
+            'ret_sem'  => $expectedReturnSemester,
+            'ret_ay'   => $expectedReturnAcademicYear,
+            'uid'      => $encodedBy,
+            'remarks'  => $remarks,
         ]
     );
 
-    $requestId = (int) db()->lastInsertId();
+    $loaId = (int) db()->lastInsertId();
 
-    $student = fetch_one('SELECT student_number, CONCAT(first_name, " ", IFNULL(middle_name, ""), " ", last_name) AS full_name FROM students WHERE id = :id', ['id' => $studentId]);
-    $label = $student ? ($student['student_number'] . ' - ' . $student['full_name']) : 'A student';
-
-    notify_staff_by_role('adviser',
-        'LOA Request Pending Review',
-        $label . ' has submitted a Leave of Absence request. Please review.'
-    );
-
-    return $requestId;
-}
-
-function loa_adviser_review(int $requestId, string $action, int $userId, string $remark = ''): void
-{
-    $req = fetch_one('SELECT * FROM loa_requests WHERE id = :id', ['id' => $requestId]);
-    if (!$req || $req['workflow_status'] !== 'submitted') return;
-
-    $status = $action === 'approve' ? 'approved' : 'rejected';
-    $nextWorkflow = $action === 'approve' ? 'chair_review' : 'rejected';
+    $currentTerm = current_term();
+    if ($currentTerm) {
+        set_student_term_status($studentId, (int) $currentTerm['id'], 'on_leave', $encodedBy);
+    }
 
     execute_sql(
-        'UPDATE loa_requests SET
-            adviser_status = :status, adviser_remark = :remark, adviser_processed_by = :uid, adviser_processed_at = NOW(),
-            workflow_status = :ws, updated_at = NOW()
-         WHERE id = :id',
-        ['status' => $status, 'remark' => $remark, 'uid' => $userId, 'ws' => $nextWorkflow, 'id' => $requestId]
+        'UPDATE students SET academic_status = "on_leave" WHERE id = :sid',
+        ['sid' => $studentId]
     );
 
-    if ($action === 'approve') {
-        send_enrollment_notification((int) $req['student_id'],
-            'LOA Request — Adviser Approved',
-            'Your Leave of Absence request has been approved by your adviser and is now with your department chair.'
-        );
-
-        $student = fetch_one('SELECT student_number, CONCAT(first_name, " ", IFNULL(middle_name, ""), " ", last_name) AS full_name FROM students WHERE id = :id', ['id' => $req['student_id']]);
-        $label = $student ? ($student['student_number'] . ' - ' . $student['full_name']) : 'A student';
-
-        $studentProg = fetch_one(
-            'SELECT d.chair_id FROM students s INNER JOIN programs p ON p.programs_id = s.program_id INNER JOIN departments d ON d.dept_id = p.department_id WHERE s.id = :sid',
-            ['sid' => $req['student_id']]
-        );
-        if ($studentProg && $studentProg['chair_id']) {
-            create_notification('staff', (int) $studentProg['chair_id'], 'info',
-                'LOA Request — Chair Review',
-                $label . ' has submitted a Leave of Absence request. Please review.'
-            );
-        }
-    } else {
-        send_enrollment_notification((int) $req['student_id'],
-            'LOA Request — Adviser Declined',
-            'Your Leave of Absence request was not approved by your adviser. Reason: ' . ($remark ?: 'No reason provided.')
-        );
-    }
+    return $loaId;
 }
 
-function loa_chair_review(int $requestId, string $action, int $userId, string $remark = ''): void
-{
-    $req = fetch_one('SELECT * FROM loa_requests WHERE id = :id', ['id' => $requestId]);
-    if (!$req || $req['workflow_status'] !== 'chair_review') return;
+function update_loa_record(
+    int $loaId,
+    ?string $reason = null,
+    ?string $effectiveFrom = null,
+    ?string $effectiveTo = null,
+    ?string $expectedReturnSemester = null,
+    ?string $expectedReturnAcademicYear = null,
+    ?string $remarks = null,
+    ?string $status = null
+): void {
+    $sets = ['updated_at = NOW()'];
+    $params = ['id' => $loaId];
 
-    $status = $action === 'approve' ? 'approved' : 'rejected';
-    $nextWorkflow = $action === 'approve' ? 'registrar_review' : 'rejected';
+    if ($reason !== null) { $sets[] = 'reason = :reason'; $params['reason'] = $reason; }
+    if ($effectiveFrom !== null) { $sets[] = 'effective_date_from = :edfrom'; $params['edfrom'] = $effectiveFrom; }
+    if ($effectiveTo !== null) { $sets[] = 'effective_date_to = :edto'; $params['edto'] = $effectiveTo; }
+    if ($expectedReturnSemester !== null) { $sets[] = 'expected_return_semester = :ret_sem'; $params['ret_sem'] = $expectedReturnSemester; }
+    if ($expectedReturnAcademicYear !== null) { $sets[] = 'expected_return_academic_year = :ret_ay'; $params['ret_ay'] = $expectedReturnAcademicYear; }
+    if ($remarks !== null) { $sets[] = 'remarks = :remarks'; $params['remarks'] = $remarks; }
+    if ($status !== null) { $sets[] = 'status = :status'; $params['status'] = $status; }
 
     execute_sql(
-        'UPDATE loa_requests SET
-            chair_status = :status, chair_remark = :remark, chair_processed_by = :uid, chair_processed_at = NOW(),
-            workflow_status = :ws, updated_at = NOW()
-         WHERE id = :id',
-        ['status' => $status, 'remark' => $remark, 'uid' => $userId, 'ws' => $nextWorkflow, 'id' => $requestId]
+        'UPDATE leave_of_absence SET ' . implode(', ', $sets) . ' WHERE id = :id',
+        $params
     );
-
-    if ($action === 'approve') {
-        send_enrollment_notification((int) $req['student_id'],
-            'LOA Request — Chair Approved',
-            'Your Leave of Absence request has been approved by your department chair and is now with the Registrar.'
-        );
-
-        notify_staff_by_role('registrar',
-            'LOA Request — Ready for Registrar Review',
-            'A Leave of Absence request has passed adviser and chair review and needs registrar approval.'
-        );
-    } else {
-        send_enrollment_notification((int) $req['student_id'],
-            'LOA Request — Chair Declined',
-            'Your Leave of Absence request was not approved by your department chair. Reason: ' . ($remark ?: 'No reason provided.')
-        );
-    }
 }
 
-function loa_registrar_review(int $requestId, string $action, int $userId, string $remark = ''): void
+function mark_loa_returned(int $loaId, int $userId): void
 {
-    $req = fetch_one('SELECT * FROM loa_requests WHERE id = :id', ['id' => $requestId]);
-    if (!$req || $req['workflow_status'] !== 'registrar_review') return;
-
-    $status = $action === 'approve' ? 'approved' : 'rejected';
-    $nextWorkflow = $action === 'approve' ? 'approved' : 'rejected';
-
-    execute_sql(
-        'UPDATE loa_requests SET
-            registrar_status = :status, registrar_remark = :remark, registrar_processed_by = :uid, registrar_processed_at = NOW(),
-            workflow_status = :ws, updated_at = NOW()
-         WHERE id = :id',
-        ['status' => $status, 'remark' => $remark, 'uid' => $userId, 'ws' => $nextWorkflow, 'id' => $requestId]
-    );
-
-    if ($action === 'approve') {
-        execute_sql(
-            'UPDATE students SET academic_status = "on_leave" WHERE id = :sid',
-            ['sid' => $req['student_id']]
-        );
-
-        send_enrollment_notification((int) $req['student_id'],
-            'LOA Approved',
-            'Your Leave of Absence has been approved. You are now on official leave for this term. Enrollment is suspended until you return.'
-        );
-    } else {
-        send_enrollment_notification((int) $req['student_id'],
-            'LOA Request — Registrar Declined',
-            'Your Leave of Absence request was not approved by the Registrar. Reason: ' . ($remark ?: 'No reason provided.')
-        );
-    }
-}
-
-function loa_process_return(int $requestId, int $userId): void
-{
-    $req = fetch_one('SELECT * FROM loa_requests WHERE id = :id', ['id' => $requestId]);
-    if (!$req || $req['workflow_status'] !== 'approved') return;
+    $loa = fetch_one('SELECT * FROM leave_of_absence WHERE id = :id', ['id' => $loaId]);
+    if (!$loa || $loa['status'] !== 'active') return;
 
     db()->beginTransaction();
     try {
         execute_sql(
-            'UPDATE loa_requests SET workflow_status = "returned", return_processed_by = :uid, return_processed_at = NOW(), updated_at = NOW() WHERE id = :id',
-            ['uid' => $userId, 'id' => $requestId]
+            'UPDATE leave_of_absence SET status = "returned", returned_by = :uid, returned_at = NOW(), updated_at = NOW() WHERE id = :id',
+            ['uid' => $userId, 'id' => $loaId]
         );
 
         execute_sql(
             'UPDATE students SET academic_status = "active" WHERE id = :sid',
-            ['sid' => $req['student_id']]
+            ['sid' => $loa['student_id']]
         );
 
-        $studentId = (int) $req['student_id'];
-        $placement = get_student_placement($studentId);
-        if ($placement) {
-            $currentTerm = current_term();
-            $termId = $currentTerm ? (int) $currentTerm['id'] : 0;
-            if ($termId > 0) {
-                create_academic_placement(
-                    $studentId,
-                    (int) $placement['program_id'],
-                    $termId,
-                    'reentry',
-                    'Returned from Leave of Absence (LOA #' . $requestId . ')',
-                    $userId,
-                    $placement['curriculum_id'] ? (int) $placement['curriculum_id'] : null,
-                    (int) $placement['year_level'],
-                    (string) $placement['standing'],
-                    $placement['enrollment_status']
-                );
-            }
+        $currentTerm = current_term();
+        if ($currentTerm) {
+            set_student_term_status((int) $loa['student_id'], (int) $currentTerm['id'], 'active', $userId);
         }
 
-        send_enrollment_notification($studentId,
-            'Return from Leave of Absence',
-            'Your return from Leave of Absence has been processed. Your academic status is now Active. You may proceed with enrollment.'
-        );
-
         db()->commit();
-    } catch (Throwable $e) {
+    } catch (\Throwable $e) {
         db()->rollBack();
         throw $e;
     }
+}
+
+function extend_loa(int $loaId, string $newEffectiveTo, ?string $newExpectedReturnSemester, ?string $newExpectedReturnAcademicYear, int $userId): void
+{
+    $loa = fetch_one('SELECT * FROM leave_of_absence WHERE id = :id', ['id' => $loaId]);
+    if (!$loa || $loa['status'] !== 'active') return;
+
+    execute_sql(
+        'UPDATE leave_of_absence SET status = "extended", updated_at = NOW() WHERE id = :id',
+        ['id' => $loaId]
+    );
+
+    create_loa_record(
+        (int) $loa['student_id'],
+        $loa['student_no'],
+        $loa['program_id'],
+        $loa['department_id'] ? (int) $loa['department_id'] : null,
+        date('Y-m-d'),
+        $loa['semester'],
+        $loa['academic_year'],
+        $loa['effective_date_from'],
+        $newEffectiveTo,
+        $loa['reason'],
+        $newExpectedReturnSemester,
+        $newExpectedReturnAcademicYear,
+        $userId,
+        'Extended from LOA #' . $loaId
+    );
+}
+
+function cancel_loa(int $loaId, int $userId): void
+{
+    $loa = fetch_one('SELECT * FROM leave_of_absence WHERE id = :id', ['id' => $loaId]);
+    if (!$loa || $loa['status'] !== 'active') return;
+
+    execute_sql(
+        'UPDATE leave_of_absence SET status = "cancelled", updated_at = NOW() WHERE id = :id',
+        ['id' => $loaId]
+    );
+
+    execute_sql(
+        'UPDATE students SET academic_status = "active" WHERE id = :sid',
+        ['sid' => $loa['student_id']]
+    );
+
+    $currentTerm = current_term();
+    if ($currentTerm) {
+        set_student_term_status((int) $loa['student_id'], (int) $currentTerm['id'], 'active', $userId);
+    }
+}
+
+function set_student_term_status(int $studentId, int $termId, string $status, ?int $userId = null): void
+{
+    execute_sql(
+        'INSERT INTO student_term_status (student_id, term_id, status, updated_by, updated_at)
+         VALUES (:sid, :tid, :status, :uid, NOW())
+         ON DUPLICATE KEY UPDATE status = :status2, updated_by = :uid2, updated_at = NOW()',
+        [
+            'sid'     => $studentId,
+            'tid'     => $termId,
+            'status'  => $status,
+            'uid'     => $userId,
+            'status2' => $status,
+            'uid2'    => $userId,
+        ]
+    );
+}
+
+function is_student_on_leave(int $studentId): bool
+{
+    $student = fetch_one('SELECT academic_status FROM students WHERE id = :id', ['id' => $studentId]);
+    if ($student && $student['academic_status'] === 'on_leave') return true;
+
+    $currentTerm = current_term();
+    if ($currentTerm) {
+        $termStatus = fetch_one(
+            'SELECT status FROM student_term_status WHERE student_id = :sid AND term_id = :tid',
+            ['sid' => $studentId, 'tid' => (int) $currentTerm['id']]
+        );
+        if ($termStatus && $termStatus['status'] === 'on_leave') return true;
+    }
+
+    return false;
+}
+
+function get_student_term_status(int $studentId, int $termId): string
+{
+    $row = fetch_one(
+        'SELECT status FROM student_term_status WHERE student_id = :sid AND term_id = :tid',
+        ['sid' => $studentId, 'tid' => $termId]
+    );
+    return $row ? (string) $row['status'] : 'active';
+}
+
+function get_active_loa_for_student(int $studentId): ?array
+{
+    return fetch_one(
+        'SELECT * FROM leave_of_absence WHERE student_id = :sid AND status = "active" LIMIT 1',
+        ['sid' => $studentId]
+    );
+}
+
+function get_loa_return_monitoring(string $academicYear, string $semester): array
+{
+    $rows = fetch_all(
+        'SELECT loa.*, s.student_number, CONCAT(s.first_name, " ", IFNULL(s.middle_name, ""), " ", s.last_name) AS full_name,
+                p.program_name
+         FROM leave_of_absence loa
+         INNER JOIN students s ON s.id = loa.student_id
+         INNER JOIN programs p ON p.programs_id = loa.program_id
+         WHERE loa.expected_return_academic_year = :ay AND loa.expected_return_semester = :sem
+         ORDER BY loa.status = "active" DESC, s.student_number ASC',
+        ['ay' => $academicYear, 'sem' => $semester]
+    );
+
+    $total = count($rows);
+    $returned = 0;
+    $notYet = 0;
+    foreach ($rows as $r) {
+        if ($r['status'] === 'returned') $returned++;
+        elseif ($r['status'] === 'active') $notYet++;
+    }
+
+    return [
+        'rows'     => $rows,
+        'total'    => $total,
+        'returned' => $returned,
+        'not_yet'  => $notYet,
+    ];
+}
+
+function get_loa_stats(): array
+{
+    $active = fetch_one('SELECT COUNT(*) AS cnt FROM leave_of_absence WHERE status = "active"');
+    $returned = fetch_one('SELECT COUNT(*) AS cnt FROM leave_of_absence WHERE status = "returned"');
+    $extended = fetch_one('SELECT COUNT(*) AS cnt FROM leave_of_absence WHERE status = "extended"');
+    $expired = fetch_one('SELECT COUNT(*) AS cnt FROM leave_of_absence WHERE status = "active" AND effective_date_to < CURDATE()');
+
+    return [
+        'active'   => (int) ($active['cnt'] ?? 0),
+        'returned' => (int) ($returned['cnt'] ?? 0),
+        'extended' => (int) ($extended['cnt'] ?? 0),
+        'expired'  => (int) ($expired['cnt'] ?? 0),
+    ];
+}
+
+function expire_overdue_loa(): void
+{
+    execute_sql(
+        'UPDATE leave_of_absence SET status = "expired", updated_at = NOW()
+         WHERE status = "active" AND effective_date_to < CURDATE()'
+    );
+}
+
+function get_semester_label(string $semester): string
+{
+    return match($semester) {
+        '1' => '1st Semester',
+        '2' => '2nd Semester',
+        'summer' => 'Summer',
+        default => $semester,
+    };
 }

@@ -59,7 +59,8 @@ function db(): PDO
         ensure_transferee_records_table();
         ensure_transferee_subjects_table();
         ensure_tor_requests_table();
-        ensure_loa_requests_table();
+        ensure_leave_of_absence_table();
+        ensure_student_term_status_table();
         ensure_student_status_column();
         ensure_grading_engine_tables();
         ensure_grades_term_id_column();

@@ -1008,7 +1008,7 @@ function ensure_tor_requests_table(): void
     }
 }
 
-function ensure_loa_requests_table(): void
+function ensure_leave_of_absence_table(): void
 {
     static $done = false;
     if ($done) return;
@@ -1018,39 +1018,66 @@ function ensure_loa_requests_table(): void
         global $pdo;
         if (!($pdo instanceof PDO)) return;
 
-        $stmt = $pdo->query("SHOW TABLES LIKE 'loa_requests'");
+        $stmt = $pdo->query("SHOW TABLES LIKE 'leave_of_absence'");
         if (!$stmt || !$stmt->fetch()) {
             $pdo->exec("
-                CREATE TABLE IF NOT EXISTS `loa_requests` (
-                    `id`                    INT AUTO_INCREMENT PRIMARY KEY,
-                    `student_id`            INT NOT NULL,
-                    `term_id`               INT NOT NULL,
-                    `reason_category`       ENUM('medical','personal','family','financial','academic','work','other') NOT NULL,
-                    `reason_detail`         TEXT NULL,
-                    `expected_return_term_id` INT NULL,
-                    `workflow_status`       ENUM('submitted','adviser_review','chair_review','registrar_review','approved','rejected','cancelled','returned') NOT NULL DEFAULT 'submitted',
-                    `adviser_status`        ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
-                    `adviser_remark`        TEXT NULL,
-                    `adviser_processed_by`  INT NULL,
-                    `adviser_processed_at`  TIMESTAMP NULL,
-                    `chair_status`          ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
-                    `chair_remark`          TEXT NULL,
-                    `chair_processed_by`    INT NULL,
-                    `chair_processed_at`    TIMESTAMP NULL,
-                    `registrar_status`      ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
-                    `registrar_remark`      TEXT NULL,
-                    `registrar_processed_by` INT NULL,
-                    `registrar_processed_at` TIMESTAMP NULL,
-                    `return_processed_by`   INT NULL,
-                    `return_processed_at`   TIMESTAMP NULL,
-                    `remarks`               TEXT NULL,
-                    `created_at`            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    `updated_at`            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                CREATE TABLE IF NOT EXISTS `leave_of_absence` (
+                    `id`                        INT AUTO_INCREMENT PRIMARY KEY,
+                    `student_id`                INT NOT NULL,
+                    `student_no`                VARCHAR(50) NOT NULL,
+                    `program_id`                VARCHAR(50) NOT NULL,
+                    `department_id`             INT NULL,
+                    `date_filed`                DATE NOT NULL,
+                    `semester`                  ENUM('1','2','summer') NOT NULL,
+                    `academic_year`             VARCHAR(20) NOT NULL,
+                    `effective_date_from`       DATE NOT NULL,
+                    `effective_date_to`         DATE NOT NULL,
+                    `reason`                    TEXT NULL,
+                    `expected_return_semester`  ENUM('1','2','summer') NULL,
+                    `expected_return_academic_year` VARCHAR(20) NULL,
+                    `status`                    ENUM('active','returned','extended','cancelled','expired') NOT NULL DEFAULT 'active',
+                    `encoded_by`                INT NULL,
+                    `encoded_at`                TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `returned_by`               INT NULL,
+                    `returned_at`               TIMESTAMP NULL,
+                    `remarks`                   TEXT NULL,
+                    `created_at`                TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at`                TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     CONSTRAINT `fk_loa_student` FOREIGN KEY (`student_id`) REFERENCES `students`(`id`) ON DELETE CASCADE,
-                    CONSTRAINT `fk_loa_term` FOREIGN KEY (`term_id`) REFERENCES `academic_terms`(`id`) ON DELETE RESTRICT,
-                    CONSTRAINT `fk_loa_return_term` FOREIGN KEY (`expected_return_term_id`) REFERENCES `academic_terms`(`id`) ON DELETE SET NULL,
+                    CONSTRAINT `fk_loa_program` FOREIGN KEY (`program_id`) REFERENCES `programs`(`programs_id`) ON DELETE RESTRICT,
                     INDEX `idx_loa_student` (`student_id`),
-                    INDEX `idx_loa_status` (`workflow_status`)
+                    INDEX `idx_loa_status` (`status`),
+                    INDEX `idx_loa_acad_year` (`academic_year`, `semester`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+            ");
+        }
+    } catch (\Throwable $e) {
+    }
+}
+
+function ensure_student_term_status_table(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    try {
+        global $pdo;
+        if (!($pdo instanceof PDO)) return;
+
+        $stmt = $pdo->query("SHOW TABLES LIKE 'student_term_status'");
+        if (!$stmt || !$stmt->fetch()) {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `student_term_status` (
+                    `id`            INT AUTO_INCREMENT PRIMARY KEY,
+                    `student_id`    INT NOT NULL,
+                    `term_id`       INT NOT NULL,
+                    `status`        ENUM('active','on_leave','withdrawn','graduated') NOT NULL DEFAULT 'active',
+                    `updated_by`    INT NULL,
+                    `updated_at`    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    CONSTRAINT `fk_sts_student` FOREIGN KEY (`student_id`) REFERENCES `students`(`id`) ON DELETE CASCADE,
+                    CONSTRAINT `fk_sts_term` FOREIGN KEY (`term_id`) REFERENCES `academic_terms`(`id`) ON DELETE RESTRICT,
+                    UNIQUE KEY `uq_sts_student_term` (`student_id`, `term_id`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
             ");
         }
