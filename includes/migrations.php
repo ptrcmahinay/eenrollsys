@@ -2063,3 +2063,54 @@ function ensure_scholarship_tables(): void
         try { $pdo->exec($sql); } catch (\Throwable $e) {}
     }
 }
+
+function ensure_fhe_evaluation_tables(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    global $pdo;
+    if (!($pdo instanceof PDO)) return;
+
+    $stmt = $pdo->query("SHOW COLUMNS FROM `scholarship_rules` LIKE 'max_shifting_year_level'");
+    if (!$stmt || !$stmt->fetch()) {
+        try { $pdo->exec("ALTER TABLE `scholarship_rules` ADD COLUMN `max_shifting_year_level` INT UNSIGNED NULL AFTER `max_year_level`"); } catch (\Throwable $e) {}
+    }
+
+    $tables = [
+        "CREATE TABLE IF NOT EXISTS `previous_financial_assistance` (
+            `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            `student_id` INT UNSIGNED NOT NULL,
+            `previous_hei` VARCHAR(255) NOT NULL,
+            `program_name` VARCHAR(150) NULL,
+            `academic_year` VARCHAR(20) NULL,
+            `semester` VARCHAR(10) NULL,
+            `assistance_type` VARCHAR(100) NOT NULL DEFAULT 'FHE',
+            `government_funded` TINYINT(1) NOT NULL DEFAULT 1,
+            `amount` DECIMAL(10,2) NULL,
+            `has_bachelor_degree` TINYINT(1) NOT NULL DEFAULT 0,
+            `verified` TINYINT(1) NOT NULL DEFAULT 0,
+            `verified_by` INT UNSIGNED NULL,
+            `verified_at` TIMESTAMP NULL,
+            `remarks` TEXT NULL,
+            `encoded_by` INT UNSIGNED NULL,
+            `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+            `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            KEY `idx_pfa_student` (`student_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci",
+
+        "CREATE TABLE IF NOT EXISTS `program_durations` (
+            `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            `program_id` INT NOT NULL,
+            `prescribed_years` INT UNSIGNED NOT NULL DEFAULT 4,
+            `notes` TEXT NULL,
+            `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY `uq_program_duration` (`program_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci",
+    ];
+
+    foreach ($tables as $sql) {
+        try { $pdo->exec($sql); } catch (\Throwable $e) {}
+    }
+}

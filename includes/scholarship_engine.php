@@ -83,6 +83,7 @@ function save_scholarship_rules(int $scholarshipId, array $data): void
         'loa'            => (int) ($data['allow_during_loa'] ?? 0),
         'max_yl'         => !empty($data['max_year_level']) ? (int) $data['max_year_level'] : null,
         'min_yl'         => !empty($data['min_year_level']) ? (int) $data['min_year_level'] : null,
+        'max_shift_yl'   => !empty($data['max_shifting_year_level']) ? (int) $data['max_shifting_year_level'] : null,
         'programs'       => !empty($data['applicable_programs']) ? $data['applicable_programs'] : null,
         'excluded'       => !empty($data['excluded_programs']) ? $data['excluded_programs'] : null,
         'priority'       => (int) ($data['priority'] ?? 1),
@@ -92,6 +93,7 @@ function save_scholarship_rules(int $scholarshipId, array $data): void
         execute_sql(
             'UPDATE scholarship_rules SET requires_regular_status = :reg, requires_active_enrollment = :active,
              allow_during_loa = :loa, max_year_level = :max_yl, min_year_level = :min_yl,
+             max_shifting_year_level = :max_shift_yl,
              applicable_programs = :programs, excluded_programs = :excluded, priority = :priority, status = :status
              WHERE scholarship_id = :sid',
             $params
@@ -99,8 +101,9 @@ function save_scholarship_rules(int $scholarshipId, array $data): void
     } else {
         execute_sql(
             'INSERT INTO scholarship_rules (scholarship_id, requires_regular_status, requires_active_enrollment,
-             allow_during_loa, max_year_level, min_year_level, applicable_programs, excluded_programs, priority, status)
-             VALUES (:sid, :reg, :active, :loa, :max_yl, :min_yl, :programs, :excluded, :priority, :status)',
+             allow_during_loa, max_year_level, min_year_level, max_shifting_year_level,
+             applicable_programs, excluded_programs, priority, status)
+             VALUES (:sid, :reg, :active, :loa, :max_yl, :min_yl, :max_shift_yl, :programs, :excluded, :priority, :status)',
             $params
         );
     }
@@ -196,9 +199,86 @@ function get_active_student_scholarship(int $studentId, string $scholarshipCode)
     );
 }
 
+/* ─── Program Duration ─── */
+
+function get_program_duration(int $programId): int
+{
+    $row = fetch_one('SELECT prescribed_years FROM program_durations WHERE program_id = :pid LIMIT 1', ['pid' => $programId]);
+    return $row ? (int) $row['prescribed_years'] : 4;
+}
+
+function set_program_duration(int $programId, int $years, string $notes = ''): void
+{
+    $existing = fetch_one('SELECT id FROM program_durations WHERE program_id = :pid LIMIT 1', ['pid' => $programId]);
+    if ($existing) {
+        execute_sql('UPDATE program_durations SET prescribed_years = :y, notes = :n WHERE program_id = :pid', ['y' => $years, 'n' => $notes, 'pid' => $programId]);
+    } else {
+        execute_sql('INSERT INTO program_durations (program_id, prescribed_years, notes) VALUES (:pid, :y, :n)', ['pid' => $programId, 'y' => $years, 'n' => $notes]);
+    }
+}
+
+/* ─── Previous Financial Assistance (Transferee Records) ─── */
+
+function get_previous_financial_assistance(int $studentId): array
+{
+    return fetch_all(
+        'SELECT * FROM previous_financial_assistance WHERE student_id = :sid ORDER BY created_at DESC',
+        ['sid' => $studentId]
+    );
+}
+
+function save_previous_financial_assistance(int $studentId, array $records): void
+{
+    execute_sql('DELETE FROM previous_financial_assistance WHERE student_id = :sid', ['sid' => $studentId]);
+    foreach ($records as $r) {
+        if (trim($r['previous_hei'] ?? '') === '') continue;
+        execute_sql(
+            'INSERT INTO previous_financial_assistance
+             (student_id, previous_hei, program_name, academic_year, semester, assistance_type,
+              government_funded, amount, has_bachelor_degree, verified, verified_by, verified_at, remarks, encoded_by)
+             VALUES (:sid, :hei, :prog, :ay, :sem, :atype, :govt, :amt, :degree, :verified, :vb, :va, :remarks, :encoded_by)',
+            [
+                'sid'       => $studentId,
+                'hei'       => $r['previous_hei'],
+                'prog'      => $r['program_name'] ?? null,
+                'ay'        => $r['academic_year'] ?? null,
+                'sem'       => $r['semester'] ?? null,
+                'atype'     => $r['assistance_type'] ?? 'FHE',
+                'govt'      => (int) ($r['government_funded'] ?? 1),
+                'amt'       => !empty($r['amount']) ? (float) $r['amount'] : null,
+                'degree'    => (int) ($r['has_bachelor_degree'] ?? 0),
+                'verified'  => (int) ($r['verified'] ?? 0),
+                'vb'        => $r['verified_by'] ?? null,
+                'va'        => $r['verified_at'] ?? null,
+                'remarks'   => $r['remarks'] ?? null,
+                'encoded_by' => $r['encoded_by'] ?? null,
+            ]
+        );
+    }
+}
+
+function get_previous_government_assistance_terms(int $studentId): int
+{
+    $row = fetch_one(
+        'SELECT COUNT(*) AS cnt FROM previous_financial_assistance
+         WHERE student_id = :sid AND government_funded = 1 AND has_bachelor_degree = 0',
+        ['sid' => $studentId]
+    );
+    return (int) ($row['cnt'] ?? 0);
+}
+
+function has_previous_bachelor_degree(int $studentId): bool
+{
+    $row = fetch_one(
+        'SELECT COUNT(*) AS cnt FROM previous_financial_assistance WHERE student_id = :sid AND has_bachelor_degree = 1',
+        ['sid' => $studentId]
+    );
+    return (int) ($row['cnt'] ?? 0) > 0;
+}
+
 /* ─── Scholarship Consumption Tracking ─── */
 
-function record_scholarship_term(int $studentScholarshipId, int $studentId, int $termId, string $status = 'NOT_ENROLLED', bool $consumes = false): void
+function record_scholarship_term(int $studentScholarshipId, int $studentId, int $termId, string $status = 'NOT_ENROLLED', bool $consumes = false, ?int $programId = null): void
 {
     $existing = fetch_one(
         'SELECT id FROM student_scholarship_terms WHERE student_scholarship_id = :ssid AND term_id = :tid LIMIT 1',
@@ -216,16 +296,6 @@ function record_scholarship_term(int $studentScholarshipId, int $studentId, int 
             ['ssid' => $studentScholarshipId, 'sid' => $studentId, 'tid' => $termId, 'status' => $status, 'consume' => $consumes ? 1 : 0]
         );
     }
-}
-
-function mark_scholarship_term_enrolled(int $studentScholarshipId, int $termId): void
-{
-    record_scholarship_term($studentScholarshipId, 0, $termId, 'ENROLLED', true);
-}
-
-function mark_scholarship_term_loa(int $studentScholarshipId, int $termId): void
-{
-    record_scholarship_term($studentScholarshipId, 0, $termId, 'LOA', false);
 }
 
 function get_student_scholarship_terms(int $studentScholarshipId): array
@@ -250,71 +320,115 @@ function get_consumed_scholarship_terms(int $studentScholarshipId): int
     return (int) ($row['cnt'] ?? 0);
 }
 
-/* ─── Eligibility Check ─── */
+/* ─── FHE Eligibility Engine ─── */
 
-function check_scholarship_eligibility(int $studentId, int $scholarshipId, ?array $student = null, ?array $term = null): array
+function check_fhe_eligibility(int $studentId, ?array $student = null, ?array $term = null): array
 {
-    $scholarship = get_scholarship_program($scholarshipId);
-    if (!$scholarship || $scholarship['status'] !== 'ACTIVE') {
-        return ['eligible' => false, 'reason' => 'Scholarship program not found or inactive.'];
-    }
-
-    $rules = get_scholarship_rules($scholarshipId);
-    if (!$rules || $rules['status'] !== 'ACTIVE') {
-        return ['eligible' => true, 'reason' => 'No rules configured — eligible by default.'];
-    }
-
     if (!$student) {
         $student = fetch_one('SELECT * FROM students WHERE id = :id LIMIT 1', ['id' => $studentId]);
     }
     if (!$student) {
-        return ['eligible' => false, 'reason' => 'Student not found.'];
+        return ['eligible' => false, 'reason' => 'Student not found.', 'student_type' => 'unknown'];
     }
 
-    if ($rules['requires_regular_status'] && ($student['status'] ?? '') !== 'Regular') {
-        return ['eligible' => false, 'reason' => 'Requires regular academic standing.'];
+    $scholarship = get_scholarship_program_by_code('RA10931');
+    if (!$scholarship || $scholarship['status'] !== 'ACTIVE') {
+        return ['eligible' => false, 'reason' => 'FHE program not configured.', 'student_type' => 'unknown'];
     }
 
-    if ($rules['requires_active_enrollment'] && ($student['academic_status'] ?? '') !== 'active') {
-        return ['eligible' => false, 'reason' => 'Student is not actively enrolled.'];
+    if (has_previous_bachelor_degree($studentId)) {
+        return ['eligible' => false, 'reason' => 'Student already holds a bachelor\'s degree — not eligible for FHE.', 'student_type' => (string) ($student['classification'] ?? 'New')];
     }
 
-    if (!$rules['allow_during_loa'] && is_student_on_leave($studentId)) {
-        return ['eligible' => false, 'reason' => 'Scholarship not available during LOA.'];
+    $rules = get_scholarship_rules((int) $scholarship['id']);
+    $classification = (string) ($student['classification'] ?? 'New');
+    $programId = (int) $student['program_id'];
+    $yearLevel = (int) $student['year_level'];
+    $academicStatus = (string) ($student['academic_status'] ?? 'active');
+
+    if ($rules && $rules['status'] === 'ACTIVE') {
+        if ($rules['requires_active_enrollment'] && $academicStatus !== 'active') {
+            return ['eligible' => false, 'reason' => 'Student is not actively enrolled (status: ' . $academicStatus . ').', 'student_type' => $classification];
+        }
+        if (!$rules['allow_during_loa'] && $academicStatus === 'on_leave') {
+            return ['eligible' => false, 'reason' => 'FHE not available during LOA — requires registrar evaluation on return.', 'student_type' => $classification];
+        }
     }
 
-    if ($rules['max_year_level'] && ($student['year_level'] ?? 0) > (int) $rules['max_year_level']) {
-        return ['eligible' => false, 'reason' => 'Exceeds maximum year level for this scholarship.'];
+    $prescribedYears = get_program_duration($programId);
+    $prescribedTerms = $prescribedYears * 2;
+    $gracePeriod = $rules ? (int) ($rules['grace_period_terms'] ?? 2) : 2;
+
+    $activeSS = get_active_student_scholarship($studentId, 'RA10931');
+    $internalConsumed = 0;
+    if ($activeSS) {
+        $internalConsumed = get_consumed_scholarship_terms((int) $activeSS['id']);
     }
 
-    if ($rules['min_year_level'] && ($student['year_level'] ?? 0) < (int) $rules['min_year_level']) {
-        return ['eligible' => false, 'reason' => 'Below minimum year level for this scholarship.'];
+    $previousGovtTerms = get_previous_government_assistance_terms($studentId);
+
+    $totalConsumed = $internalConsumed + $previousGovtTerms;
+    $allowableTerms = $prescribedTerms + $gracePeriod;
+    $remaining = $allowableTerms - $totalConsumed;
+
+    $studentType = $classification;
+    $notes = [];
+    $notes[] = 'Program: ' . $prescribedYears . '-year (' . $prescribedTerms . ' terms)';
+    $notes[] = 'Grace period: ' . $gracePeriod . ' terms';
+
+    if ($classification === 'Shiftee' || $classification === 'Shiftee') {
+        $shiftCount = fetch_one(
+            'SELECT COUNT(*) AS cnt FROM shifting_requests WHERE student_id = :sid AND workflow_status = "approved"',
+            ['sid' => $studentId]
+        );
+        $shifts = (int) ($shiftCount['cnt'] ?? 0);
+        if ($shifts > 0) {
+            $notes[] = 'Shiftee — previous FHE terms (' . $internalConsumed . ' internal) preserved.';
+        }
+        if ($rules && $rules['max_shifting_year_level'] && $yearLevel > (int) $rules['max_shifting_year_level']) {
+            return ['eligible' => false, 'reason' => 'Shifting only allowed up to Year ' . $rules['max_shifting_year_level'] . '.', 'student_type' => $studentType];
+        }
     }
 
-    $activeScholarship = get_active_student_scholarship($studentId, $scholarship['code']);
-    if (!$activeScholarship) {
-        return ['eligible' => false, 'reason' => 'Student does not have this scholarship assigned.'];
+    if ($classification === 'Transferee') {
+        if ($previousGovtTerms > 0) {
+            $notes[] = 'Transferee — ' . $previousGovtTerms . ' previous government-funded term(s) counted.';
+        } else {
+            $notes[] = 'Transferee — no previous government-funded assistance recorded.';
+        }
     }
 
-    $consumed = get_consumed_scholarship_terms((int) $activeScholarship['id']);
-    $totalEntitlement = (int) $scholarship['duration_value'];
-    if ($scholarship['duration_type'] === 'YEARS') {
-        $totalEntitlement *= 2;
+    if ($classification === 'Returnee') {
+        $notes[] = 'Returnee — LOA period(s) should not consume FHE. Registrar evaluation may be needed.';
     }
-    $remaining = $totalEntitlement - $consumed + (int) ($scholarship['grace_period_terms'] ?? 0);
+
+    $notes[] = 'Total consumed: ' . $totalConsumed . ' of ' . $allowableTerms . ' allowable terms (' . $remaining . ' remaining).';
 
     if ($remaining <= 0) {
-        return ['eligible' => false, 'reason' => 'Scholarship entitlement fully consumed (' . $consumed . ' of ' . $totalEntitlement . ' terms).'];
+        return [
+            'eligible'        => false,
+            'reason'          => 'FHE entitlement fully consumed (' . $totalConsumed . ' of ' . $allowableTerms . ' terms). Remaining: ' . $remaining . '.',
+            'student_type'    => $studentType,
+            'consumed'        => $totalConsumed,
+            'allowable'       => $allowableTerms,
+            'remaining'       => $remaining,
+            'notes'           => $notes,
+        ];
     }
 
     return [
         'eligible'             => true,
-        'reason'               => 'Eligible',
-        'student_scholarship'  => $activeScholarship,
-        'consumed_terms'       => $consumed,
-        'total_entitlement'    => $totalEntitlement,
-        'remaining_terms'      => $remaining,
-        'grace_period'         => (int) ($scholarship['grace_period_terms'] ?? 0),
+        'reason'               => 'Eligible for FHE',
+        'student_type'         => $studentType,
+        'consumed'             => $totalConsumed,
+        'internal_consumed'    => $internalConsumed,
+        'previous_govt_terms'  => $previousGovtTerms,
+        'allowable'            => $allowableTerms,
+        'remaining'            => $remaining,
+        'prescribed_years'     => $prescribedYears,
+        'grace_period'         => $gracePeriod,
+        'notes'                => $notes,
+        'student_scholarship'  => $activeSS,
     ];
 }
 
@@ -423,6 +537,74 @@ function mark_scholarship_term_on_enrollment(int $studentId, int $termId): void
     }
 }
 
+/* ─── Generic Scholarship Eligibility (non-FHE) ─── */
+
+function check_scholarship_eligibility(int $studentId, int $scholarshipId, ?array $student = null, ?array $term = null): array
+{
+    $scholarship = get_scholarship_program($scholarshipId);
+    if (!$scholarship || $scholarship['status'] !== 'ACTIVE') {
+        return ['eligible' => false, 'reason' => 'Scholarship program not found or inactive.'];
+    }
+
+    $rules = get_scholarship_rules($scholarshipId);
+    if (!$rules || $rules['status'] !== 'ACTIVE') {
+        return ['eligible' => true, 'reason' => 'No rules configured — eligible by default.'];
+    }
+
+    if (!$student) {
+        $student = fetch_one('SELECT * FROM students WHERE id = :id LIMIT 1', ['id' => $studentId]);
+    }
+    if (!$student) {
+        return ['eligible' => false, 'reason' => 'Student not found.'];
+    }
+
+    if ($rules['requires_regular_status'] && ($student['status'] ?? '') !== 'Regular') {
+        return ['eligible' => false, 'reason' => 'Requires regular academic standing.'];
+    }
+
+    if ($rules['requires_active_enrollment'] && ($student['academic_status'] ?? '') !== 'active') {
+        return ['eligible' => false, 'reason' => 'Student is not actively enrolled.'];
+    }
+
+    if (!$rules['allow_during_loa'] && is_student_on_leave($studentId)) {
+        return ['eligible' => false, 'reason' => 'Scholarship not available during LOA.'];
+    }
+
+    if ($rules['max_year_level'] && ($student['year_level'] ?? 0) > (int) $rules['max_year_level']) {
+        return ['eligible' => false, 'reason' => 'Exceeds maximum year level for this scholarship.'];
+    }
+
+    if ($rules['min_year_level'] && ($student['year_level'] ?? 0) < (int) $rules['min_year_level']) {
+        return ['eligible' => false, 'reason' => 'Below minimum year level for this scholarship.'];
+    }
+
+    $activeScholarship = get_active_student_scholarship($studentId, $scholarship['code']);
+    if (!$activeScholarship) {
+        return ['eligible' => false, 'reason' => 'Student does not have this scholarship assigned.'];
+    }
+
+    $consumed = get_consumed_scholarship_terms((int) $activeScholarship['id']);
+    $totalEntitlement = (int) $scholarship['duration_value'];
+    if ($scholarship['duration_type'] === 'YEARS') {
+        $totalEntitlement *= 2;
+    }
+    $remaining = $totalEntitlement - $consumed + (int) ($scholarship['grace_period_terms'] ?? 0);
+
+    if ($remaining <= 0) {
+        return ['eligible' => false, 'reason' => 'Scholarship entitlement fully consumed (' . $consumed . ' of ' . $totalEntitlement . ' terms).'];
+    }
+
+    return [
+        'eligible'             => true,
+        'reason'               => 'Eligible',
+        'student_scholarship'  => $activeScholarship,
+        'consumed_terms'       => $consumed,
+        'total_entitlement'    => $totalEntitlement,
+        'remaining_terms'      => $remaining,
+        'grace_period'         => (int) ($scholarship['grace_period_terms'] ?? 0),
+    ];
+}
+
 /* ─── Financial Profile (replaces hardcoded logic) ─── */
 
 function scholarship_financial_profile(array $student, ?array $term = null): array
@@ -442,7 +624,7 @@ function scholarship_financial_profile(array $student, ?array $term = null): arr
         return ['status' => 'tuition', 'scholarship_applies' => false, 'adjustments' => []];
     }
 
-    $eligibility = check_scholarship_eligibility($studentId, (int) $fhe['scholarship_id'], $student, $term);
+    $eligibility = check_fhe_eligibility($studentId, $student, $term);
     if (!$eligibility['eligible']) {
         return ['status' => 'tuition', 'scholarship_applies' => false, 'reason' => $eligibility['reason'], 'adjustments' => []];
     }
@@ -454,4 +636,26 @@ function scholarship_financial_profile(array $student, ?array $term = null): arr
         'eligibility'        => $eligibility,
         'adjustments'        => [],
     ];
+}
+
+/* ─── Shifting Year Level Check ─── */
+
+function can_student_shift(int $studentId, ?array $student = null): array
+{
+    if (!$student) {
+        $student = fetch_one('SELECT * FROM students WHERE id = :id LIMIT 1', ['id' => $studentId]);
+    }
+    if (!$student) {
+        return ['allowed' => false, 'reason' => 'Student not found.'];
+    }
+
+    $scholarship = get_scholarship_program_by_code('RA10931');
+    if ($scholarship) {
+        $rules = get_scholarship_rules((int) $scholarship['id']);
+        if ($rules && $rules['max_shifting_year_level'] && (int) $student['year_level'] > (int) $rules['max_shifting_year_level']) {
+            return ['allowed' => false, 'reason' => 'Shifting is only allowed until Year ' . $rules['max_shifting_year_level'] . '. Current year level: ' . $student['year_level'] . '.'];
+        }
+    }
+
+    return ['allowed' => true, 'reason' => ''];
 }

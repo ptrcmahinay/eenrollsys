@@ -43,6 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'allow_during_loa'           => isset($_POST['allow_during_loa']) ? 1 : 0,
             'max_year_level'             => $_POST['max_year_level'] ?? '',
             'min_year_level'             => $_POST['min_year_level'] ?? '',
+            'max_shifting_year_level'    => $_POST['max_shifting_year_level'] ?? '',
             'priority'                   => (int) ($_POST['priority'] ?? 1),
             'status'                     => 'ACTIVE',
         ]);
@@ -90,6 +91,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash('success', 'RA 10931 Free Higher Education seeded.');
         redirect('registrar/scholarships.php');
     }
+
+    if ($postAction === 'save_program_duration') {
+        $progId = (int) ($_POST['program_id'] ?? 0);
+        $years = (int) ($_POST['prescribed_years'] ?? 4);
+        if ($progId > 0 && $years > 0) {
+            set_program_duration($progId, $years, trim($_POST['notes'] ?? ''));
+            flash('success', 'Program duration saved.');
+        }
+        redirect('registrar/scholarships.php?action=fhe');
+    }
+
+    if ($postAction === 'save_previous_aid') {
+        $stuId = (int) ($_POST['student_id'] ?? 0);
+        if ($stuId > 0) {
+            $records = [];
+            $heis = $_POST['pfa_previous_hei'] ?? [];
+            $progs = $_POST['pfa_program_name'] ?? [];
+            $ays = $_POST['pfa_academic_year'] ?? [];
+            $sems = $_POST['pfa_semester'] ?? [];
+            $govts = $_POST['pfa_government_funded'] ?? [];
+            $degrees = $_POST['pfa_has_bachelor_degree'] ?? [];
+            $remarks = $_POST['pfa_remarks'] ?? [];
+            for ($i = 0; $i < count($heis); $i++) {
+                $records[] = [
+                    'previous_hei'       => $heis[$i] ?? '',
+                    'program_name'       => $progs[$i] ?? '',
+                    'academic_year'      => $ays[$i] ?? '',
+                    'semester'           => $sems[$i] ?? '',
+                    'government_funded'  => $govts[$i] ?? 0,
+                    'has_bachelor_degree' => $degrees[$i] ?? 0,
+                    'remarks'            => $remarks[$i] ?? '',
+                    'encoded_by'         => $_SESSION['user_id'] ?? null,
+                ];
+            }
+            save_previous_financial_assistance($stuId, $records);
+            flash('success', 'Previous financial assistance records saved.');
+        }
+        redirect($_SERVER['HTTP_REFERER'] ?? 'registrar/scholarships.php');
+    }
 }
 
 function seed_ra10931_scholarship(): void
@@ -100,7 +140,7 @@ function seed_ra10931_scholarship(): void
     $id = create_scholarship_program([
         'code'            => 'RA10931',
         'name'            => 'Free Higher Education',
-        'description'     => 'Tuition and other school fees waiver under RA 10931 (Universal Access to Quality Tertiary Education Act). Covers tuition, admission, athletic, computer, cultural, development, entrance, guidance, handbook, laboratory, library, medical/dental, registration, and school ID fees.',
+        'description'     => 'Tuition and Other School Fees waiver under RA 10931 (Universal Access to Quality Tertiary Education Act). Covers tuition + 13 specified OSF per UniFAST guidelines.',
         'type'            => 'TUITION_WAIVER',
         'duration_type'   => 'YEARS',
         'duration_value'  => 5,
@@ -114,11 +154,16 @@ function seed_ra10931_scholarship(): void
         'allow_during_loa'           => 0,
         'max_year_level'             => '',
         'min_year_level'             => '',
+        'max_shifting_year_level'    => 2,
         'priority'                   => 1,
         'status'                     => 'ACTIVE',
     ]);
 
-    $coveredFees = ['tuition', 'admission', 'athletic', 'computer', 'cultural', 'development', 'entrance', 'guidance', 'handbook', 'laboratory', 'library', 'medical', 'registration', 'school_id'];
+    $coveredFees = [
+        'tuition', 'admission', 'athletic', 'computer', 'cultural',
+        'development', 'entrance', 'guidance', 'handbook', 'laboratory',
+        'library', 'medical', 'registration', 'school_id',
+    ];
     $benefits = [];
     foreach ($coveredFees as $fee) {
         $benefits[] = [
@@ -251,9 +296,10 @@ ob_start();
         <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" name="allow_during_loa" value="1" <?= ($editRules['allow_during_loa'] ?? 0) ? 'checked' : '' ?>> Allow During LOA</label>
         <div><label style="display:block;">Priority</label><input type="number" name="priority" value="<?= h((string) ($editRules['priority'] ?? 1)) ?>" style="width:100%;"><div style="font-size:11px;color:#94a3b8;">Lower number = applied first when student has multiple scholarships (1 = highest priority).</div></div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;margin-top:8px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;font-size:13px;margin-top:8px;">
         <div><label style="font-weight:600;display:block;">Min Year Level</label><input type="number" name="min_year_level" value="<?= h((string) ($editRules['min_year_level'] ?? '')) ?>" placeholder="None" style="width:100%;"></div>
         <div><label style="font-weight:600;display:block;">Max Year Level</label><input type="number" name="max_year_level" value="<?= h((string) ($editRules['max_year_level'] ?? '')) ?>" placeholder="None" style="width:100%;"></div>
+        <div><label style="font-weight:600;display:block;">Max Shifting Year Level</label><input type="number" name="max_shifting_year_level" value="<?= h((string) ($editRules['max_shifting_year_level'] ?? '')) ?>" placeholder="None" style="width:100%;"><div style="font-size:11px;color:#94a3b8;">Highest year level where shifting is allowed (e.g. 2 = no shifting in 3rd year+).</div></div>
     </div>
 
     <hr class="soft" style="margin:12px 0;">
@@ -358,6 +404,57 @@ function addBenefit() {
     c.appendChild(d);
 }
 </script>
+
+<?php elseif ($action === 'fhe'): ?>
+
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+    <h2 style="font-size:15px;font-weight:700;">FHE Evaluation — Program Durations</h2>
+    <a href="scholarships.php" class="btn btn-sm">Back to Scholarships</a>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+    <div style="font-weight:700;font-size:13px;margin-bottom:8px;">Configure Program Prescribed Duration</div>
+    <div style="font-size:12px;color:#64748b;margin-bottom:10px;">Set the prescribed number of years for each program. This determines the FHE allowable period (prescribed years + grace period).</div>
+    <form method="post" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;font-size:13px;">
+        <input type="hidden" name="action" value="save_program_duration">
+        <div><label style="display:block;">Program</label><select name="program_id" style="width:200px;" required>
+            <?php
+            $allPrograms = fetch_all('SELECT programs_id, program_code, program_name FROM programs ORDER BY program_code');
+            foreach ($allPrograms as $p): ?>
+            <option value="<?= h($p['programs_id']) ?>"><?= h($p['program_code'] . ' - ' . $p['program_name']) ?></option>
+            <?php endforeach; ?>
+        </select></div>
+        <div><label style="display:block;">Prescribed Years</label><input type="number" name="prescribed_years" value="4" min="1" max="10" style="width:80px;" required></div>
+        <div><label style="display:block;">Notes</label><input type="text" name="notes" style="width:200px;"></div>
+        <button class="btn btn-sm" type="submit">Save Duration</button>
+    </form>
+</div>
+
+<?php
+$programDurations = fetch_all(
+    'SELECT pd.*, p.program_code, p.program_name
+     FROM program_durations pd
+     INNER JOIN programs p ON p.programs_id = pd.program_id
+     ORDER BY p.program_code'
+);
+?>
+<div class="card" style="overflow-x:auto;">
+<table class="table" style="font-size:13px;width:100%;">
+    <thead><tr><th>Program</th><th>Prescribed Years</th><th>Allowable Terms (incl. grace)</th><th>Notes</th></tr></thead>
+    <tbody>
+    <?php if (empty($programDurations)): ?>
+        <tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:12px;">No program durations configured. Default is 4 years.</td></tr>
+    <?php else: foreach ($programDurations as $pd): ?>
+        <tr>
+            <td><strong><?= h($pd['program_code']) ?></strong> — <?= h($pd['program_name']) ?></td>
+            <td><?= (int) $pd['prescribed_years'] ?> years</td>
+            <td><?= ((int) $pd['prescribed_years'] * 2) + 2 ?> terms</td>
+            <td><?= h($pd['notes'] ?? '') ?></td>
+        </tr>
+    <?php endforeach; endif; ?>
+    </tbody>
+</table>
+</div>
 
 <?php endif; ?>
 <?php

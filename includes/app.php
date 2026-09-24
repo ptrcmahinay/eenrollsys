@@ -72,6 +72,7 @@ function db(): PDO
         ensure_offering_term_protection();
         ensure_student_subjects_grades_locked_column();
         ensure_scholarship_tables();
+        ensure_fhe_evaluation_tables();
     }
     return $pdo;
 }
