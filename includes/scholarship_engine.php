@@ -810,3 +810,144 @@ function can_student_shift(int $studentId, ?array $student = null): array
 
     return ['allowed' => true, 'reason' => ''];
 }
+
+/* ─── Scholarship Consumption Rules ─── */
+
+function get_consumption_rules(int $scholarshipId): array
+{
+    return fetch_all(
+        'SELECT * FROM scholarship_consumption_rules WHERE scholarship_id = :sid ORDER BY FIELD(situation, "ENROLLED","NOT_ENROLLED_NO_LOA","LOA","ENROLLED_LOA_CONFLICT","FHE_LIMIT_REACHED","REGISTRAR_OVERRIDE")',
+        ['sid' => $scholarshipId]
+    );
+}
+
+function get_consumption_rule(int $scholarshipId, string $situation): ?array
+{
+    return fetch_one(
+        'SELECT * FROM scholarship_consumption_rules WHERE scholarship_id = :sid AND situation = :sit LIMIT 1',
+        ['sid' => $scholarshipId, 'sit' => $situation]
+    );
+}
+
+function save_consumption_rules(int $scholarshipId, array $rules): void
+{
+    foreach ($rules as $situation => $action) {
+        $situation = strtoupper(trim($situation));
+        $action = strtoupper(trim($action));
+        if (!in_array($situation, ['ENROLLED','NOT_ENROLLED_NO_LOA','LOA','ENROLLED_LOA_CONFLICT','FHE_LIMIT_REACHED','REGISTRAR_OVERRIDE'])) continue;
+        if (!in_array($action, ['COUNT','EXCLUDE','BLOCK','DENY','OVERRIDE'])) continue;
+        $existing = get_consumption_rule($scholarshipId, $situation);
+        if ($existing) {
+            execute_sql(
+                'UPDATE scholarship_consumption_rules SET action = :act WHERE id = :id',
+                ['act' => $action, 'id' => (int) $existing['id']]
+            );
+        } else {
+            execute_sql(
+                'INSERT INTO scholarship_consumption_rules (scholarship_id, situation, action) VALUES (:sid, :sit, :act)',
+                ['sid' => $scholarshipId, 'sit' => $situation, 'act' => $action]
+            );
+        }
+    }
+}
+
+function seed_default_consumption_rules(int $scholarshipId): void
+{
+    $defaults = [
+        'ENROLLED'              => 'COUNT',
+        'NOT_ENROLLED_NO_LOA'   => 'COUNT',
+        'LOA'                   => 'EXCLUDE',
+        'ENROLLED_LOA_CONFLICT' => 'BLOCK',
+        'FHE_LIMIT_REACHED'     => 'DENY',
+        'REGISTRAR_OVERRIDE'    => 'OVERRIDE',
+    ];
+    foreach ($defaults as $situation => $action) {
+        $existing = get_consumption_rule($scholarshipId, $situation);
+        if (!$existing) {
+            execute_sql(
+                'INSERT INTO scholarship_consumption_rules (scholarship_id, situation, action) VALUES (:sid, :sit, :act)',
+                ['sid' => $scholarshipId, 'sit' => $situation, 'act' => $action]
+            );
+        }
+    }
+}
+
+/* ─── End-of-Term FHE Evaluation ─── */
+
+function evaluate_fhe_for_term(int $termId, ?int $evaluatedBy = null): array
+{
+    $term = fetch_one('SELECT * FROM academic_terms WHERE id = :tid LIMIT 1', ['tid' => $termId]);
+    if (!$term) return ['error' => 'Term not found.'];
+
+    $fheScholarship = get_scholarship_program_by_code('RA10931');
+    if (!$fheScholarship) return ['error' => 'FHE scholarship not configured.'];
+
+    $activeStudents = fetch_all(
+        'SELECT s.id, s.student_number, s.first_name, s.last_name, s.program_id, s.year_level, s.classification
+         FROM student_scholarships ss
+         INNER JOIN students s ON s.id = ss.student_id
+         WHERE ss.scholarship_id = :schid AND ss.status = "ACTIVE" AND s.record_status = "active"',
+        ['schid' => (int) $fheScholarship['id']]
+    );
+
+    $loaStudents = fetch_all(
+        'SELECT DISTINCT student_id FROM leave_of_absence
+         WHERE status = "active"
+         AND ((effective_date_from <= :term_end AND effective_date_to >= :term_start) OR (semester = :sem AND academic_year = :ay))',
+        ['term_start' => $term['start_date'] ?? date('Y-m-d'), 'term_end' => $term['end_date'] ?? date('Y-m-d'), 'sem' => $term['semester'] ?? '', 'ay' => $term['academic_year'] ?? '']
+    );
+    $loaStudentIds = array_column($loaStudents, 'student_id');
+
+    $enrolledStudentIds = [];
+    $enrollments = fetch_all(
+        'SELECT DISTINCT student_id FROM enrollment_requests WHERE term_id = :tid AND workflow_status IN ("approved","finalized")',
+        ['tid' => $termId]
+    );
+    $enrolledStudentIds = array_column($enrollments, 'student_id');
+
+    $evaluated = 0;
+    foreach ($activeStudents as $student) {
+        $sid = (int) $student['id'];
+        $activeSS = get_active_student_scholarship($sid, 'RA10931');
+        if (!$activeSS) continue;
+
+        $isLoa = in_array($sid, $loaStudentIds);
+        $isEnrolled = in_array($sid, $enrolledStudentIds);
+
+        if ($isEnrolled && $isLoa) {
+            $termStatus = 'ENROLLED_LOA_CONFLICT';
+            $consumes = false;
+        } elseif ($isLoa) {
+            $termStatus = 'LOA';
+            $consumes = false;
+        } elseif ($isEnrolled) {
+            $termStatus = 'ENROLLED';
+            $consumes = true;
+        } else {
+            $termStatus = 'NOT_ENROLLED';
+            $consumes = true;
+        }
+
+        $rule = get_consumption_rule((int) $fheScholarship['id'], $termStatus);
+        $action = $rule ? $rule['action'] : 'COUNT';
+
+        switch ($action) {
+            case 'EXCLUDE': $consumes = false; break;
+            case 'BLOCK': $consumes = false; break;
+            case 'DENY': $consumes = false; break;
+            case 'OVERRIDE':
+                $hasOverride = has_active_enrollment_override($sid, 'FHE');
+                $consumes = $hasOverride ? true : false;
+                break;
+            case 'COUNT':
+            default:
+                $consumes = true;
+                break;
+        }
+
+        record_scholarship_term((int) $activeSS['id'], $sid, $termId, $termStatus, $consumes, (int) $student['program_id']);
+        $evaluated++;
+    }
+
+    return ['evaluated' => $evaluated, 'term_id' => $termId];
+}

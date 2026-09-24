@@ -21,6 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'grace_period_terms' => (int) ($_POST['grace_period_terms'] ?? 2),
             'status'          => trim($_POST['status'] ?? 'ACTIVE'),
         ]);
+        seed_default_consumption_rules($id);
         flash('success', 'Scholarship program created.');
         redirect('registrar/scholarships.php?action=edit&id=' . $id);
     }
@@ -61,6 +62,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ];
         }
         save_scholarship_benefits($id, $benefits);
+
+        if (isset($_POST['consumption_rules'])) {
+            save_consumption_rules($id, $_POST['consumption_rules']);
+        }
 
         flash('success', 'Scholarship program updated.');
         redirect('registrar/scholarships.php?action=edit&id=' . $id);
@@ -327,6 +332,39 @@ ob_start();
             <button type="button" onclick="this.closest('.benefit-row').remove()" style="background:none;border:none;color:#dc2626;cursor:pointer;">✕</button>
         </div>
         <?php endforeach; endif; ?>
+    </div>
+
+    <?php
+    $consumptionRules = get_consumption_rules($id);
+    $crMap = [];
+    foreach ($consumptionRules as $cr) { $crMap[$cr['situation']] = $cr['action']; }
+    ?>
+    <hr class="soft" style="margin:12px 0;">
+    <div style="font-weight:700;font-size:13px;margin-bottom:8px;">FHE Consumption Rules</div>
+    <div style="font-size:12px;color:#94a3b8;margin-bottom:8px;">Configure how each situation affects FHE semester consumption. These rules are applied during end-of-term evaluation and fee assessment.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">
+        <?php
+        $situations = [
+            'ENROLLED'              => ['label' => 'Enrolled', 'desc' => 'Student enrolled in the term'],
+            'NOT_ENROLLED_NO_LOA'   => ['label' => 'Not Enrolled + No LOA', 'desc' => 'Student did not enroll and has no approved LOA'],
+            'LOA'                   => ['label' => 'Approved LOA', 'desc' => 'Student has an active Leave of Absence'],
+            'ENROLLED_LOA_CONFLICT' => ['label' => 'Enrolled + LOA', 'desc' => 'Conflict: enrolled while LOA is active'],
+            'FHE_LIMIT_REACHED'     => ['label' => 'FHE Limit Reached', 'desc' => 'Student has consumed all allowed FHE semesters'],
+            'REGISTRAR_OVERRIDE'    => ['label' => 'Registrar Override', 'desc' => 'Registrar has manually overridden FHE restriction'],
+        ];
+        $actions = ['COUNT' => 'Count FHE', 'EXCLUDE' => 'Do Not Count', 'BLOCK' => 'Block', 'DENY' => 'Deny FHE', 'OVERRIDE' => 'Follow Override'];
+        foreach ($situations as $sit => $info):
+        ?>
+        <div style="padding:8px;border:1px solid var(--line);border-radius:6px;">
+            <div style="font-weight:600;"><?= h($info['label']) ?></div>
+            <div style="font-size:11px;color:#94a3b8;margin-bottom:4px;"><?= h($info['desc']) ?></div>
+            <select name="consumption_rules[<?= h($sit) ?>]" style="width:100%;font-size:12px;">
+                <?php foreach ($actions as $act => $actLabel): ?>
+                    <option value="<?= h($act) ?>" <?= ($crMap[$sit] ?? ($sit === 'LOA' ? 'EXCLUDE' : ($sit === 'ENROLLED_LOA_CONFLICT' ? 'BLOCK' : ($sit === 'FHE_LIMIT_REACHED' ? 'DENY' : 'COUNT')))) === $act ? 'selected' : '' ?>><?= h($actLabel) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <?php endforeach; ?>
     </div>
     <?php endif; ?>
 

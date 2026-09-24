@@ -2149,6 +2149,17 @@ function ensure_fhe_monitoring_tables(): void
             KEY `idx_eo_student` (`student_id`),
             KEY `idx_eo_type` (`override_type`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci",
+
+        "CREATE TABLE IF NOT EXISTS `scholarship_consumption_rules` (
+            `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            `scholarship_id` INT UNSIGNED NOT NULL,
+            `situation` ENUM('ENROLLED','NOT_ENROLLED_NO_LOA','LOA','ENROLLED_LOA_CONFLICT','FHE_LIMIT_REACHED','REGISTRAR_OVERRIDE') NOT NULL,
+            `action` ENUM('COUNT','EXCLUDE','BLOCK','DENY','OVERRIDE') NOT NULL DEFAULT 'COUNT',
+            `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+            `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY `uq_scholarship_consumption` (`scholarship_id`, `situation`),
+            KEY `idx_scr_scholarship` (`scholarship_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci",
     ];
 
     foreach ($tables as $sql) {

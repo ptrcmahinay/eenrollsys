@@ -257,19 +257,61 @@ if ($action === 'settings' && $action !== 'student') :
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
     <div class="card">
         <h3>FHE Term History</h3>
-        <?php if (empty($termHistory)): ?>
+        <?php
+        $combinedHistory = [];
+        foreach ($pfa as $p) {
+            if ((int) ($p['government_funded'] ?? 0) && (int) ($p['fhe_verified'] ?? 0) && (int) ($p['previous_fhe_semesters'] ?? 0) > 0) {
+                for ($i = 0; $i < (int) $p['previous_fhe_semesters']; $i++) {
+                    $combinedHistory[] = [
+                        'start_year' => '',
+                        'end_year'   => '',
+                        'semester'   => '',
+                        'status'     => 'PREVIOUS_SUC',
+                        'source'     => $p['previous_hei'] ?? 'Previous HEI',
+                        'counted'    => true,
+                        'sort_key'   => '0-' . str_pad((string) $i, 3, '0', STR_PAD_LEFT),
+                    ];
+                }
+            }
+        }
+        foreach ($termHistory as $th) {
+            $ay = fetch_one('SELECT ay.start_year, ay.end_year FROM academic_terms at2 INNER JOIN academic_years ay ON ay.id = at2.academic_year_id WHERE at2.id = :tid', ['tid' => (int) $th['term_id']]);
+            $combinedHistory[] = [
+                'start_year' => $ay['start_year'] ?? '',
+                'end_year'   => $ay['end_year'] ?? '',
+                'semester'   => $th['semester'] ?? '',
+                'status'     => $th['status'],
+                'source'     => 'CvSU',
+                'counted'    => (bool) $th['consumes_scholarship'],
+                'sort_key'   => ($ay['start_year'] ?? '9999') . '-' . ($th['semester'] === '2' ? '5' : ($th['semester'] === 'mid' ? '3' : '1')),
+            ];
+        }
+        usort($combinedHistory, fn($a, $b) => strcmp($a['sort_key'], $b['sort_key']));
+        ?>
+        <?php if (empty($combinedHistory)): ?>
             <p style="color:var(--muted);font-size:13px;">No FHE monitoring records yet.</p>
         <?php else: ?>
         <div class="table-wrap">
             <table>
-                <thead><tr><th>AY</th><th>Sem</th><th>Status</th><th>Counted</th></tr></thead>
+                <thead><tr><th>AY</th><th>Sem</th><th>Source</th><th>Status</th><th>Counted</th></tr></thead>
                 <tbody>
-                <?php foreach ($termHistory as $th): ?>
+                <?php foreach ($combinedHistory as $ch): ?>
                     <tr>
-                        <td><?= h($th['start_year'] ?? '') ?>-<?= h($th['end_year'] ?? '') ?></td>
-                        <td><?= h($th['semester'] ?? '') ?></td>
-                        <td><span class="badge <?= $th['status'] === 'ENROLLED' ? 'success' : ($th['status'] === 'LOA' ? 'warning' : 'info') ?>"><?= h($th['status']) ?></span></td>
-                        <td><?= $th['consumes_scholarship'] ? 'YES' : 'NO' ?></td>
+                        <td><?= h($ch['start_year'] ? $ch['start_year'] . '-' . $ch['end_year'] : '—') ?></td>
+                        <td><?= h($ch['semester'] ?: '—') ?></td>
+                        <td><span class="badge info" style="font-size:11px;"><?= h($ch['source']) ?></span></td>
+                        <td>
+                            <?php if ($ch['status'] === 'PREVIOUS_SUC'): ?>
+                                <span class="badge warning">Previous SUC</span>
+                            <?php elseif ($ch['status'] === 'ENROLLED'): ?>
+                                <span class="badge success">Enrolled</span>
+                            <?php elseif ($ch['status'] === 'LOA'): ?>
+                                <span class="badge danger">LOA</span>
+                            <?php else: ?>
+                                <span class="badge info"><?= h($ch['status']) ?></span>
+                            <?php endif; ?>
+                        </td>
+                        <td><?= $ch['counted'] ? 'YES' : 'NO' ?></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
