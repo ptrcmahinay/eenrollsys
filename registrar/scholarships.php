@@ -232,8 +232,8 @@ ob_start();
             <option value="<?= $dt ?>" <?= ($editProgram['duration_type'] ?? 'TERMS') === $dt ? 'selected' : '' ?>><?= $dt ?></option>
             <?php endforeach; ?>
         </select></div>
-        <div><label style="font-weight:600;display:block;">Duration Value</label><input type="number" name="duration_value" value="<?= h((string) ($editProgram['duration_value'] ?? 10)) ?>" style="width:100%;"></div>
-        <div><label style="font-weight:600;display:block;">Grace Period (terms)</label><input type="number" name="grace_period_terms" value="<?= h((string) ($editProgram['grace_period_terms'] ?? 2)) ?>" style="width:100%;"></div>
+        <div><label style="font-weight:600;display:block;">Duration Value</label><input type="number" name="duration_value" value="<?= h((string) ($editProgram['duration_value'] ?? 10)) ?>" style="width:100%;"><div style="font-size:11px;color:#94a3b8;">Number of terms or years the student is entitled.</div></div>
+        <div><label style="font-weight:600;display:block;">Grace Period (terms)</label><input type="number" name="grace_period_terms" value="<?= h((string) ($editProgram['grace_period_terms'] ?? 2)) ?>" style="width:100%;"><div style="font-size:11px;color:#94a3b8;">Extra terms allowed after entitlement is used up.</div></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;margin-top:10px;">
         <div><label style="font-weight:600;display:block;">Status</label><select name="status" style="width:100%;">
@@ -249,7 +249,7 @@ ob_start();
         <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" name="requires_regular_status" value="1" <?= ($editRules['requires_regular_status'] ?? 0) ? 'checked' : '' ?>> Requires Regular Status</label>
         <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" name="requires_active_enrollment" value="1" <?= ($editRules['requires_active_enrollment'] ?? 1) ? 'checked' : '' ?>> Requires Active Enrollment</label>
         <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" name="allow_during_loa" value="1" <?= ($editRules['allow_during_loa'] ?? 0) ? 'checked' : '' ?>> Allow During LOA</label>
-        <div><label style="display:block;">Priority</label><input type="number" name="priority" value="<?= h((string) ($editRules['priority'] ?? 1)) ?>" style="width:100%;"></div>
+        <div><label style="display:block;">Priority</label><input type="number" name="priority" value="<?= h((string) ($editRules['priority'] ?? 1)) ?>" style="width:100%;"><div style="font-size:11px;color:#94a3b8;">Lower number = applied first when student has multiple scholarships (1 = highest priority).</div></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;margin-top:8px;">
         <div><label style="font-weight:600;display:block;">Min Year Level</label><input type="number" name="min_year_level" value="<?= h((string) ($editRules['min_year_level'] ?? '')) ?>" placeholder="None" style="width:100%;"></div>
