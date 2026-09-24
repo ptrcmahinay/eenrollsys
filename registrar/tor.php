@@ -136,12 +136,21 @@ ob_start();
                 <input type="hidden" name="action" value="clearance">
                 <input type="hidden" name="request_id" value="<?= $viewId ?>">
                 <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;">
-                    <?php foreach (['academic' => 'Academic Records', 'financial' => 'Financial Clearance', 'library' => 'Library Clearance', 'registrar' => 'Registrar Verification'] as $key => $label): ?>
-                    <span style="font-size:13px;"><?= $label ?></span>
+                    <?php
+                    $clearanceMap = [
+                        'academic'   => ['col' => 'academic_cleared',   'label' => 'Academic Records'],
+                        'financial'  => ['col' => 'financial_cleared',  'label' => 'Financial Clearance'],
+                        'library'    => ['col' => 'library_cleared',    'label' => 'Library Clearance'],
+                        'registrar'  => ['col' => 'registrar_verified', 'label' => 'Registrar Verification'],
+                    ];
+                    foreach ($clearanceMap as $key => $info):
+                        $cleared = !empty($selectedRequest[$info['col']]);
+                    ?>
+                    <span style="font-size:13px;"><?= h($info['label']) ?></span>
                     <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
-                        <input type="checkbox" name="cleared" value="1" <?= $selectedRequest[$key . '_cleared'] || $selectedRequest[str_replace(' ', '_', $key) . '_cleared'] ? 'checked' : '' ?>
+                        <input type="checkbox" name="cleared" value="1" <?= $cleared ? 'checked' : '' ?>
                             onchange="this.form.elements['clearance_type'].value='<?= $key ?>'; this.form.submit();">
-                        <?= $selectedRequest[$key . '_cleared'] || $selectedRequest[str_replace(' ', '_', $key) . '_cleared'] ? '<span style="color:#16a34a;">Cleared</span>' : '<span style="color:#f59e0b;">Pending</span>' ?>
+                        <?= $cleared ? '<span style="color:#16a34a;">Cleared</span>' : '<span style="color:#f59e0b;">Pending</span>' ?>
                     </label>
                     <?php endforeach; ?>
                 </div>
