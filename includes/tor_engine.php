@@ -151,8 +151,7 @@ function get_tor_academic_records(int $studentId): array
     $allSubjects = fetch_all(
         'SELECT ss.id, ss.subject_id, ss.final_grade, ss.units, ss.term_id,
                 sub.subject_code, sub.subject_description,
-                t.semester, ay.year_label, ay.start_year,
-                ss.program_id AS enrollment_program_id
+                t.semester, ay.year_label, ay.start_year
          FROM student_subjects ss
          INNER JOIN subjects sub ON sub.subject_id = ss.subject_id
          INNER JOIN academic_terms t ON t.id = ss.term_id
@@ -176,7 +175,6 @@ function get_tor_academic_records(int $studentId): array
                 'semester'   => $s['semester'],
                 'start_year' => (int) $s['start_year'],
                 'subjects'   => [],
-                'program_id' => (int) $s['enrollment_program_id'],
             ];
         }
         $terms[$tid]['subjects'][] = $s;
