@@ -1979,11 +1979,11 @@ function ensure_scholarship_tables(): void
     if ($done) return;
     $done = true;
 
-    try {
-        global $pdo;
-        if (!($pdo instanceof PDO)) return;
+    global $pdo;
+    if (!($pdo instanceof PDO)) return;
 
-        $pdo->exec("CREATE TABLE IF NOT EXISTS `scholarship_programs` (
+    $tables = [
+        "CREATE TABLE IF NOT EXISTS `scholarship_programs` (
             `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             `code` VARCHAR(30) NOT NULL,
             `name` VARCHAR(150) NOT NULL,
@@ -1996,9 +1996,9 @@ function ensure_scholarship_tables(): void
             `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
             `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             UNIQUE KEY `uq_scholarship_code` (`code`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci",
 
-        $pdo->exec("CREATE TABLE IF NOT EXISTS `scholarship_rules` (
+        "CREATE TABLE IF NOT EXISTS `scholarship_rules` (
             `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             `scholarship_id` INT UNSIGNED NOT NULL,
             `requires_regular_status` TINYINT(1) NOT NULL DEFAULT 0,
@@ -2011,22 +2011,20 @@ function ensure_scholarship_tables(): void
             `priority` INT NOT NULL DEFAULT 1,
             `status` ENUM('ACTIVE','INACTIVE') NOT NULL DEFAULT 'ACTIVE',
             `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
-            KEY `idx_scholarship_rules_scholarship` (`scholarship_id`),
-            CONSTRAINT `fk_rules_scholarship` FOREIGN KEY (`scholarship_id`) REFERENCES `scholarship_programs` (`id`) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
+            KEY `idx_scholarship_rules_scholarship` (`scholarship_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci",
 
-        $pdo->exec("CREATE TABLE IF NOT EXISTS `scholarship_benefits` (
+        "CREATE TABLE IF NOT EXISTS `scholarship_benefits` (
             `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             `scholarship_id` INT UNSIGNED NOT NULL,
             `fee_item_name` VARCHAR(100) NOT NULL,
             `benefit_type` ENUM('WAIVE','DISCOUNT_PERCENT','DISCOUNT_FIXED') NOT NULL DEFAULT 'WAIVE',
             `benefit_value` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
             `status` ENUM('ACTIVE','INACTIVE') NOT NULL DEFAULT 'ACTIVE',
-            KEY `idx_benefits_scholarship` (`scholarship_id`),
-            CONSTRAINT `fk_benefits_scholarship` FOREIGN KEY (`scholarship_id`) REFERENCES `scholarship_programs` (`id`) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
+            KEY `idx_benefits_scholarship` (`scholarship_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci",
 
-        $pdo->exec("CREATE TABLE IF NOT EXISTS `student_scholarships` (
+        "CREATE TABLE IF NOT EXISTS `student_scholarships` (
             `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             `student_id` INT UNSIGNED NOT NULL,
             `scholarship_id` INT UNSIGNED NOT NULL,
@@ -2039,12 +2037,10 @@ function ensure_scholarship_tables(): void
             `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
             `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             KEY `idx_student_scholarship_student` (`student_id`),
-            KEY `idx_student_scholarship_program` (`scholarship_id`),
-            CONSTRAINT `fk_student_scholarship_student` FOREIGN KEY (`student_id`) REFERENCES `students` (`id`) ON DELETE CASCADE,
-            CONSTRAINT `fk_student_scholarship_program` FOREIGN KEY (`scholarship_id`) REFERENCES `scholarship_programs` (`id`) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
+            KEY `idx_student_scholarship_program` (`scholarship_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci",
 
-        $pdo->exec("CREATE TABLE IF NOT EXISTS `student_scholarship_terms` (
+        "CREATE TABLE IF NOT EXISTS `student_scholarship_terms` (
             `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             `student_scholarship_id` INT UNSIGNED NOT NULL,
             `student_id` INT UNSIGNED NOT NULL,
@@ -2059,11 +2055,11 @@ function ensure_scholarship_tables(): void
             `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
             UNIQUE KEY `uq_student_scholarship_term` (`student_scholarship_id`, `term_id`),
             KEY `idx_sst_student` (`student_id`),
-            KEY `idx_sst_term` (`term_id`),
-            CONSTRAINT `fk_sst_student_scholarship` FOREIGN KEY (`student_scholarship_id`) REFERENCES `student_scholarships` (`id`) ON DELETE CASCADE,
-            CONSTRAINT `fk_sst_student` FOREIGN KEY (`student_id`) REFERENCES `students` (`id`) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
+            KEY `idx_sst_term` (`term_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci",
+    ];
 
-    } catch (\Throwable $e) {
+    foreach ($tables as $sql) {
+        try { $pdo->exec($sql); } catch (\Throwable $e) {}
     }
 }
