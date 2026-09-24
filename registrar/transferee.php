@@ -79,6 +79,27 @@ if (is_post()) {
         flash('success', 'Transferee record rejected.');
         redirect('registrar/transferee.php');
     }
+
+    if ($action === 'save_previous_fhe' && $transfereeId > 0) {
+        $tr = fetch_one('SELECT student_id FROM transferee_records WHERE id = :id', ['id' => $transfereeId]);
+        if ($tr) {
+            save_previous_financial_assistance((int) $tr['student_id'], [
+                [
+                    'previous_hei'           => trim($_POST['previous_hei'] ?? ''),
+                    'previous_hei_type'      => $_POST['previous_hei_type'] ?? 'OTHER',
+                    'government_funded'      => (int) ($_POST['government_funded'] ?? 0),
+                    'previous_fhe_semesters' => (int) ($_POST['previous_fhe_semesters'] ?? 0),
+                    'fhe_verified'           => (int) ($_POST['fhe_verified'] ?? 0),
+                    'verified_by'            => (int) $user['users_id'],
+                    'verified_at'            => (int) ($_POST['fhe_verified'] ?? 0) ? date('Y-m-d H:i:s') : null,
+                    'remarks'                => trim($_POST['previous_fhe_remarks'] ?? ''),
+                    'encoded_by'             => (int) $user['users_id'],
+                ]
+            ]);
+            flash('success', 'Previous FHE information saved.');
+        }
+        redirect('registrar/transferee.php?view=' . $transfereeId);
+    }
 }
 
 $viewId = (int) ($_GET['view'] ?? 0);
@@ -91,6 +112,7 @@ $transferees = fetch_all(
 
 $selectedTransferee = null;
 $evaluation = [];
+$previousFhe = [];
 if ($viewId > 0) {
     $selectedTransferee = fetch_one(
         'SELECT tr.*, s.student_number, CONCAT(s.first_name, " ", IFNULL(s.middle_name, ""), " ", s.last_name) AS full_name,
@@ -102,6 +124,7 @@ if ($viewId > 0) {
     );
     if ($selectedTransferee) {
         $tsSubjects = get_transferee_subjects($viewId);
+        $previousFhe = get_previous_financial_assistance((int) $selectedTransferee['student_id']);
     }
 }
 
@@ -165,6 +188,65 @@ ob_start();
         <span>TOR: <span class="badge <?= $selectedTransferee['tor_received'] === 'received' ? 'success' : 'warning' ?>"><?= h(ucfirst($selectedTransferee['tor_received'])) ?></span></span>
         <span>Honorable Dismissal: <span class="badge <?= $selectedTransferee['honorable_dismissal'] === 'received' ? 'success' : 'warning' ?>"><?= h(ucfirst($selectedTransferee['honorable_dismissal'])) ?></span></span>
     </div>
+</div>
+
+<?php
+$pfaRecord = !empty($previousFhe) ? $previousFhe[0] : null;
+?>
+<div class="card" style="margin-bottom:16px;">
+    <h3 style="margin:0 0 12px;">Previous School — FHE Information</h3>
+    <form method="post">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="save_previous_fhe">
+        <input type="hidden" name="transferee_id" value="<?= $viewId ?>">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px;">
+            <div>
+                <label style="font-weight:600;display:block;">Previous School *</label>
+                <input type="text" name="previous_hei" value="<?= h($pfaRecord['previous_hei'] ?? $selectedTransferee['previous_school'] ?? '') ?>" style="width:100%;" required placeholder="e.g. Leyte State University">
+            </div>
+            <div>
+                <label style="font-weight:600;display:block;">School Type</label>
+                <select name="previous_hei_type" style="width:100%;">
+                    <?php foreach (['SUC' => 'State University / College', 'LUC' => 'Local University / College', 'PRIVATE' => 'Private HEI', 'OTHER' => 'Other'] as $val => $lbl): ?>
+                    <option value="<?= $val ?>" <?= ($pfaRecord['previous_hei_type'] ?? 'OTHER') === $val ? 'selected' : '' ?>><?= h($lbl) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:13px;margin-top:12px;">
+            <div>
+                <label style="font-weight:600;display:block;">Received Government-funded FHE?</label>
+                <select name="government_funded" style="width:100%;">
+                    <option value="1" <?= ($pfaRecord['government_funded'] ?? 0) ? 'selected' : '' ?>>Yes</option>
+                    <option value="0" <?= !($pfaRecord['government_funded'] ?? 0) ? 'selected' : '' ?>>No</option>
+                </select>
+            </div>
+            <div>
+                <label style="font-weight:600;display:block;">Previous FHE Semesters</label>
+                <input type="number" name="previous_fhe_semesters" value="<?= h((string) ($pfaRecord['previous_fhe_semesters'] ?? 0)) ?>" min="0" max="20" style="width:100%;">
+            </div>
+            <div>
+                <label style="font-weight:600;display:block;">Verified by Registrar?</label>
+                <select name="fhe_verified" style="width:100%;">
+                    <option value="1" <?= ($pfaRecord['fhe_verified'] ?? 0) ? 'selected' : '' ?>>Yes — Verified</option>
+                    <option value="0" <?= !($pfaRecord['fhe_verified'] ?? 0) ? 'selected' : '' ?>>No — For Verification</option>
+                </select>
+            </div>
+        </div>
+        <div style="font-size:13px;margin-top:12px;">
+            <label style="font-weight:600;display:block;">Remarks / Supporting Document Reference</label>
+            <textarea name="previous_fhe_remarks" rows="2" style="width:100%;" placeholder="e.g. TOR received, verified by Registrar Juan Dela Cruz on Sept 2024"><?= h($pfaRecord['remarks'] ?? '') ?></textarea>
+        </div>
+        <div style="margin-top:12px;">
+            <button class="btn" type="submit">Save Previous FHE Information</button>
+            <?php if ($pfaRecord): ?>
+                <span style="font-size:11px;color:#64748b;margin-left:8px;">
+                    Last encoded by: <?= $pfaRecord['encoded_by'] ? 'User #' . $pfaRecord['encoded_by'] : '—' ?>
+                    <?= $pfaRecord['verified_at'] ? '&middot; Verified: ' . h($pfaRecord['verified_at']) : '' ?>
+                </span>
+            <?php endif; ?>
+        </div>
+    </form>
 </div>
 
 <?php if (isset($tsSubjects)): ?>
