@@ -358,4 +358,4 @@ function addBenefit() {
 <?php endif; ?>
 <?php
 $content = ob_get_clean();
-require __DIR__ . '/../includes/layout.php';
+render_page('Scholarship Management', 'Scholarships', $content);
