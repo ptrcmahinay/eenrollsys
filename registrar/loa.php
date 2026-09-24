@@ -6,6 +6,17 @@ require_role(['admin', 'registrar']);
 
 $user = current_user();
 
+$tableExists = false;
+try {
+    $stmt = db()->query("SHOW TABLES LIKE 'leave_of_absence'");
+    $tableExists = $stmt && $stmt->fetch();
+} catch (\Throwable $e) {}
+
+if (!$tableExists) {
+    flash('error', 'Leave of Absence table not yet created. Please run database setup first.');
+    redirect('registrar/dashboard.php');
+}
+
 expire_overdue_loa();
 
 if (is_post()) {
