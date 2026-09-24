@@ -396,9 +396,9 @@ function create_enrollment_override(int $studentId, string $type, string $reason
 function get_student_overrides(int $studentId): array
 {
     return fetch_all(
-        'SELECT eo.*, CONCAT(u.first_name, " ", u.last_name) AS approved_by_name
+        'SELECT eo.*, u.display_name AS approved_by_name
          FROM enrollment_overrides eo
-         LEFT JOIN users u ON u.id = eo.approved_by
+         LEFT JOIN users u ON u.users_id = eo.approved_by
          WHERE eo.student_id = :sid ORDER BY eo.created_at DESC',
         ['sid' => $studentId]
     );
