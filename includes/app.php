@@ -13,6 +13,7 @@ require_once __DIR__ . '/fee_engine.php';
 require_once __DIR__ . '/shifting_engine.php';
 require_once __DIR__ . '/tor_engine.php';
 require_once __DIR__ . '/loa_engine.php';
+require_once __DIR__ . '/scholarship_engine.php';
 require_once __DIR__ . '/../vendor/autoload.php';
 
 define('APP_ROOT', realpath(__DIR__ . '/..') ?: __DIR__ . '/..');

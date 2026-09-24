@@ -1,8 +1,6 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/app.php';
-
 /* ─── Scholarship Program CRUD ─── */
 
 function get_all_scholarship_programs(string $status = ''): array
