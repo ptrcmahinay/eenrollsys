@@ -427,7 +427,7 @@ function check_university_residency(int $studentId, ?array $student = null): arr
     $enrollmentYears = fetch_one(
         'SELECT COUNT(DISTINCT ay.start_year) AS years
          FROM enrollment_requests er
-         INNER JOIN academic_terms at2 ON at2.id = er.academic_term_id
+         INNER JOIN academic_terms at2 ON at2.id = er.term_id
          INNER JOIN academic_years ay ON ay.id = at2.academic_year_id
          WHERE er.student_id = :sid AND er.workflow_status IN ("approved", "finalized")',
         ['sid' => $studentId]
