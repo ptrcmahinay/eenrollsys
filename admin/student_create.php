@@ -26,7 +26,7 @@ $data = [
     'entry_year'        => (int) ($_POST['entry_year'] ?? date('Y')),
     'classification'    => trim($_POST['classification'] ?? ''),
     'status'            => trim($_POST['status'] ?? 'Regular'),
-    'ra10931_override'  => trim($_POST['ra10931_override'] ?? 'auto'),
+    'scholarship_program_id' => (int) ($_POST['scholarship_program_id'] ?? 0),
 ];
 
 if ($data['student_number'] === '' || $data['first_name'] === '' || $data['last_name'] === '' || $data['address'] === '' || $data['program_id'] <= 0) {
@@ -43,13 +43,17 @@ if ($existing !== null) {
 execute_sql(
     'INSERT INTO students (student_number, first_name, middle_name, last_name, sex, birth_date, place_of_birth,
         contact_number, landline_no, address, religion, nationality,
-        program_id, year_level, entry_year, classification, status, ra10931_override, academic_status, record_status, created_at)
+        program_id, year_level, entry_year, classification, status, academic_status, record_status, created_at)
      VALUES (:student_number, :first_name, :middle_name, :last_name, :sex, :birth_date, :place_of_birth,
         :contact_number, :landline_no, :address, :religion, :nationality,
-        :program_id, :year_level, :entry_year, :classification, :status, :ra10931_override, "active", "active", NOW())',
-    $data
+        :program_id, :year_level, :entry_year, :classification, :status, "active", "active", NOW())',
+    array_filter($data, fn($k) => $k !== 'scholarship_program_id', ARRAY_FILTER_USE_KEY)
 );
 $studentId = (int) db()->lastInsertId();
+
+if ($data['scholarship_program_id'] > 0) {
+    assign_scholarship_to_student($studentId, $data['scholarship_program_id']);
+}
 
 $elementarySchool = trim($_POST['elementary_school'] ?? '');
 $elementaryYear = (int) ($_POST['elementary_year_graduated'] ?? 0);

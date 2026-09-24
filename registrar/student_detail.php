@@ -273,7 +273,8 @@ ob_start();
             <div class="item"><div class="k">Tuition Status</div><div class="v"><span class="badge <?= in_array($financial['status'], ['free'], true) ? 'success' : 'warning' ?>"><?= h($financial['label']) ?></span></div></div>
             <div class="item"><div class="k">Years in College</div><div class="v"><?= h($financial['years_in_college']) ?></div></div>
             <div class="item"><div class="k">Tuition Per Unit</div><div class="v">₱<?= h(format_money($financial['tuition_per_unit'])) ?></div></div>
-            <div class="item"><div class="k">Override</div><div class="v"><?= h($student['ra10931_override']) ?></div></div>
+            <?php $currentScholarship = fetch_one('SELECT sp.code, sp.name FROM student_scholarships ss JOIN scholarship_programs sp ON sp.id = ss.scholarship_id WHERE ss.student_id = :sid AND ss.status = "active" LIMIT 1', ['sid' => $student['id']]); ?>
+            <div class="item"><div class="k">Scholarship</div><div class="v"><?= $currentScholarship ? h($currentScholarship['code'] . ' - ' . $currentScholarship['name']) : '<span style="color:var(--muted);">None</span>' ?></div></div>
         </div>
     </div>
 </div>

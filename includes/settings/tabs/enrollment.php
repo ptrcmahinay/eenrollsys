@@ -3,6 +3,7 @@ $tuition = (float) setting('tuition_per_unit', '550');
 $otherFees = (float) setting('other_school_fees', '2500');
 $onlineEnrollment = setting('allow_online_enrollment', '1') === '1';
 $irregularUnitCap = (int) setting('irregular_unit_cap', '28');
+$maxShiftYear = (int) setting('max_shifting_year_level', '2');
 ?>
 
 <div class="settings-card">
@@ -34,6 +35,11 @@ $irregularUnitCap = (int) setting('irregular_unit_cap', '28');
                 <label for="enr_irregular_unit_cap">Unit Cap for Irregular Students</label>
                 <input type="number" id="enr_irregular_unit_cap" name="irregular_unit_cap" value="<?= h((string) $irregularUnitCap) ?>" min="1" max="50">
                 <div class="settings-field-hint">Maximum number of units an irregular student can enroll in per term. Set to 0 for no cap.</div>
+            </div>
+            <div class="settings-field">
+                <label for="enr_max_shift_yl">Max Year Level for Shifting</label>
+                <input type="number" id="enr_max_shift_yl" name="max_shifting_year_level" value="<?= h((string) $maxShiftYear) ?>" min="1" max="4">
+                <div class="settings-field-hint">Highest year level where students are allowed to shift programs (e.g. 2 = no shifting in 3rd year+).</div>
             </div>
         </div>
 

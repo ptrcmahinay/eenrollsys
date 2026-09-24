@@ -66,12 +66,14 @@ if (is_post()) {
         $name    = trim($_POST['program_name']  ?? '');
         $major   = trim($_POST['program_major'] ?? '');
         $labFee  = (float) ($_POST['lab_fee_per_unit'] ?? 0);
+        $years   = (int) ($_POST['prescribed_years'] ?? 4);
         if ($progId > 0 && $deptId > 0 && $code !== '' && $name !== '') {
             execute_sql(
                 'UPDATE programs SET department_id = :dept, program_code = :code, program_name = :name, program_major = :major, lab_fee_per_unit = :lf
                  WHERE programs_id = :id',
                 ['dept' => $deptId, 'code' => $code, 'name' => $name, 'major' => $major !== '' ? $major : null, 'lf' => $labFee, 'id' => $progId]
             );
+            set_program_duration($progId, $years);
             flash('success', 'Program updated.');
         } else {
             flash('error', 'Fill in all program fields.');
@@ -427,10 +429,12 @@ $departments = fetch_all('SELECT dept_id, department_code, department_name FROM 
 $programs = fetch_all(
     'SELECT p.programs_id, p.program_code, p.program_name, p.program_major, p.status,
             d.department_code, d.department_name,
-            COUNT(DISTINCT pc.curriculum_id) AS subject_count
+            COUNT(DISTINCT pc.curriculum_id) AS subject_count,
+            COALESCE(pd.prescribed_years, 4) AS prescribed_years
      FROM programs p
      LEFT JOIN departments d ON d.dept_id = p.department_id
      LEFT JOIN program_curriculum pc ON pc.program_id = p.programs_id
+     LEFT JOIN program_durations pd ON pd.program_id = p.programs_id
      GROUP BY p.programs_id
      ORDER BY d.department_code, p.program_code'
 );
@@ -524,13 +528,14 @@ ob_start();
                     <th data-dt-key="name">Program Name</th>
                     <th data-dt-key="dept" data-dt-filter="select">Department</th>
                     <th data-dt-key="count">Subjects</th>
+                    <th data-dt-key="duration">Prescribed Years</th>
                     <th data-dt-key="status" data-dt-filter="select">Status</th>
                     <?php if ($canManage): ?><th data-dt-no-sort data-dt-no-export>Actions</th><?php endif; ?>
                 </tr>
             </thead>
             <tbody>
             <?php if (count($programs) === 0): ?>
-                <tr><td colspan="7" style="text-align:center;color:var(--muted);">No programs yet.</td></tr>
+                <tr><td colspan="8" style="text-align:center;color:var(--muted);">No programs yet.</td></tr>
             <?php endif; ?>
             <?php foreach ($programs as $prog): ?>
                 <tr data-dt-row-id="<?= h((string)$prog['programs_id']) ?>"
@@ -539,6 +544,7 @@ ob_start();
                     <td data-label="Name"><?= h($prog['program_name']) ?><?= $prog['program_major'] ? ' <span style="font-size:11px;color:var(--muted);">— ' . h($prog['program_major']) . '</span>' : '' ?></td>
                     <td data-label="Department"><?= h($prog['department_code'] . ' — ' . $prog['department_name']) ?></td>
                     <td data-label="Subjects"><span class="badge info"><?= (int) $prog['subject_count'] ?></span></td>
+                    <td data-label="Duration"><?= (int) $prog['prescribed_years'] ?> years</td>
                     <td data-label="Status"><span class="badge <?= $prog['status'] === 'active' ? 'success' : 'danger' ?>"><?= h(ucfirst($prog['status'] ?? 'active')) ?></span></td>
                     <?php if ($canManage): ?>
                     <td data-label="Actions">
@@ -552,7 +558,8 @@ ob_start();
                                     "code"=>$prog["program_code"],
                                     "name"=>$prog["program_name"],
                                     "major"=>$prog["program_major"] ?? "",
-                                    "dept"=>(string)($prog["department_id"] ?? "")
+                                    "dept"=>(string)($prog["department_id"] ?? ""),
+                                    "years"=>(int)$prog["prescribed_years"]
                                 ], JSON_HEX_APOS|JSON_HEX_QUOT) ?>);'>
                                 <span class="material-symbols-outlined">edit</span>
                             </button>
@@ -855,6 +862,11 @@ ob_start(); ?>
             <label>Major (optional)</label>
             <input type="text" name="program_major" id="ep_major" placeholder="e.g. Major in Web Development">
         </div>
+        <div>
+            <label>Prescribed Years</label>
+            <input type="number" name="prescribed_years" id="ep_years" value="4" min="1" max="10" required>
+            <div style="font-size:11px;color:var(--muted);">Used for FHE allowable period computation.</div>
+        </div>
     </div>
     <div class="form-actions">
         <button type="button" class="btn secondary" data-close>Cancel</button>
@@ -867,6 +879,7 @@ function openEditProgram(p){
     document.getElementById('ep_code').value = p.code;
     document.getElementById('ep_name').value = p.name;
     document.getElementById('ep_major').value = p.major || '';
+    document.getElementById('ep_years').value = p.years || 4;
     var dept = document.getElementById('ep_dept');
     if (p.dept) dept.value = p.dept;
     document.getElementById('editProgramModal').classList.add('active');

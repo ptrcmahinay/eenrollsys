@@ -649,12 +649,9 @@ function can_student_shift(int $studentId, ?array $student = null): array
         return ['allowed' => false, 'reason' => 'Student not found.'];
     }
 
-    $scholarship = get_scholarship_program_by_code('RA10931');
-    if ($scholarship) {
-        $rules = get_scholarship_rules((int) $scholarship['id']);
-        if ($rules && $rules['max_shifting_year_level'] && (int) $student['year_level'] > (int) $rules['max_shifting_year_level']) {
-            return ['allowed' => false, 'reason' => 'Shifting is only allowed until Year ' . $rules['max_shifting_year_level'] . '. Current year level: ' . $student['year_level'] . '.'];
-        }
+    $maxShiftYl = (int) setting('max_shifting_year_level', '2');
+    if ($maxShiftYl > 0 && (int) $student['year_level'] > $maxShiftYl) {
+        return ['allowed' => false, 'reason' => 'Shifting is only allowed until Year ' . $maxShiftYl . '. Current year level: ' . $student['year_level'] . '.'];
     }
 
     return ['allowed' => true, 'reason' => ''];

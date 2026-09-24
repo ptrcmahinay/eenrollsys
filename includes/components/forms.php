@@ -150,7 +150,7 @@ function render_student_form(array $programs, array $sections = [], string $gene
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:13px;margin-top:8px;">
                 <div><label style="font-weight:600;display:block;">Classification</label><select name="classification" style="width:100%;"><option value="">—</option><option value="New">New</option><option value="Continuing">Continuing</option><option value="Transferee">Transferee</option><option value="Cross Enrollee">Cross Enrollee</option><option value="Shiftee">Shiftee</option><option value="Returnee">Returnee</option></select></div>
                 <div><label style="font-weight:600;display:block;">Academic Standing</label><select name="status" style="width:100%;"><option value="Regular">Regular</option><option value="Irregular">Irregular</option></select></div>
-                <div><label style="font-weight:600;display:block;">RA 10931</label><select name="ra10931_override" style="width:100%;"><option value="auto">Auto</option><option value="free">Force Free</option><option value="extension_tuition">Force Extension Tuition</option><option value="tuition">Force Tuition</option></select></div>
+                <div><label style="font-weight:600;display:block;">Scholarship</label><select name="scholarship_program_id" style="width:100%;"><?php $scholarships = fetch_all('SELECT id, code, name FROM scholarship_programs WHERE status = "active" ORDER BY code'); ?><option value="">None</option><?php foreach ($scholarships as $s): ?><option value="<?= h((string)$s['id']) ?>" <?= h($s['code']) === 'RA10931' ? 'selected' : '' ?>><?= h($s['code'] . ' - ' . $s['name']) ?></option><?php endforeach; ?></select></div>
             </div>
         </div>
 
