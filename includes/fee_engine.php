@@ -111,6 +111,7 @@ function compute_enrollment_fees(
 
     // Apply scholarship adjustments from scholarship engine
     $adjustments = calculate_scholarship_adjustments($studentId, $assessments, $term);
+    $fheEligibility = check_fhe_eligibility($studentId, $student);
 
     // Legacy fallback: if no scholarship engine adjustments, check ra10931_override directly
     if (empty($adjustments)) {
@@ -128,6 +129,7 @@ function compute_enrollment_fees(
         }
     }
 
+    $assessments['_fhe_eligibility'] = $fheEligibility;
     return $assessments;
 }
 

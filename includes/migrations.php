@@ -2114,3 +2114,51 @@ function ensure_fhe_evaluation_tables(): void
         try { $pdo->exec($sql); } catch (\Throwable $e) {}
     }
 }
+
+function ensure_fhe_monitoring_tables(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    global $pdo;
+    if (!($pdo instanceof PDO)) return;
+
+    $tables = [
+        "CREATE TABLE IF NOT EXISTS `fhe_settings` (
+            `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            `max_allowed_years` INT UNSIGNED NOT NULL DEFAULT 5,
+            `max_allowed_semesters` INT UNSIGNED NOT NULL DEFAULT 10,
+            `max_university_residency_years` INT UNSIGNED NOT NULL DEFAULT 6,
+            `university_residency_action` ENUM('BLOCK','WARN') NOT NULL DEFAULT 'BLOCK',
+            `allow_registrar_override` TINYINT(1) NOT NULL DEFAULT 1,
+            `updated_by` INT UNSIGNED NULL,
+            `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci",
+
+        "CREATE TABLE IF NOT EXISTS `enrollment_overrides` (
+            `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            `student_id` INT UNSIGNED NOT NULL,
+            `override_type` ENUM('FHE','UNIVERSITY_RESIDENCY') NOT NULL,
+            `reason` TEXT NOT NULL,
+            `approved_until_term_id` INT UNSIGNED NULL,
+            `approved_by` INT UNSIGNED NOT NULL,
+            `approved_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `status` ENUM('ACTIVE','EXPIRED','REVOKED') NOT NULL DEFAULT 'ACTIVE',
+            `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+            KEY `idx_eo_student` (`student_id`),
+            KEY `idx_eo_type` (`override_type`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci",
+    ];
+
+    foreach ($tables as $sql) {
+        try { $pdo->exec($sql); } catch (\Throwable $e) {}
+    }
+
+    $stmt = $pdo->query("SHOW COLUMNS FROM `previous_financial_assistance` LIKE 'previous_fhe_semesters'");
+    if (!$stmt || !$stmt->fetch()) {
+        try { $pdo->exec("ALTER TABLE `previous_financial_assistance` ADD COLUMN `previous_fhe_semesters` INT UNSIGNED NOT NULL DEFAULT 0 AFTER `assistance_type`"); } catch (\Throwable $e) {}
+        try { $pdo->exec("ALTER TABLE `previous_financial_assistance` ADD COLUMN `previous_hei_type` ENUM('SUC','LUC','PRIVATE','OTHER') NOT NULL DEFAULT 'OTHER' AFTER `previous_fhe_semesters`"); } catch (\Throwable $e) {}
+        try { $pdo->exec("ALTER TABLE `previous_financial_assistance` ADD COLUMN `fhe_verified` TINYINT(1) NOT NULL DEFAULT 0 AFTER `previous_hei_type`"); } catch (\Throwable $e) {}
+    }
+}

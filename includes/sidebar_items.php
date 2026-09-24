@@ -91,6 +91,7 @@ switch ($role) {
             ['label' => 'Fee Management', 'path' => 'admin/fees.php', 'icon' => 'receipt_long'],
             ['label' => 'Scholarships', 'path' => 'registrar/scholarships.php', 'icon' => 'school'],
             ['label' => 'FHE Evaluation', 'path' => 'registrar/scholarships.php?action=fhe', 'icon' => 'calculate'],
+            ['label' => 'FHE Monitoring', 'path' => 'registrar/fhe_monitoring.php', 'icon' => 'monitor'],
         ];
         break;
 

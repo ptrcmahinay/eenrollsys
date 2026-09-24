@@ -320,6 +320,133 @@ function get_consumed_scholarship_terms(int $studentScholarshipId): int
     return (int) ($row['cnt'] ?? 0);
 }
 
+/* ─── FHE Settings ─── */
+
+function get_fhe_settings(): array
+{
+    $row = fetch_one('SELECT * FROM fhe_settings ORDER BY id ASC LIMIT 1');
+    if (!$row) {
+        execute_sql('INSERT INTO fhe_settings (max_allowed_years, max_allowed_semesters, max_university_residency_years) VALUES (5, 10, 6)');
+        return get_fhe_settings();
+    }
+    return $row;
+}
+
+function save_fhe_settings(array $data, ?int $userId = null): void
+{
+    $existing = fetch_one('SELECT id FROM fhe_settings ORDER BY id ASC LIMIT 1');
+    if ($existing) {
+        execute_sql(
+            'UPDATE fhe_settings SET max_allowed_years = :y, max_allowed_semesters = :s, max_university_residency_years = :r,
+             university_residency_action = :action, allow_registrar_override = :override, updated_by = :uid WHERE id = :id',
+            [
+                'id'       => (int) $existing['id'],
+                'y'        => (int) ($data['max_allowed_years'] ?? 5),
+                's'        => (int) ($data['max_allowed_semesters'] ?? 10),
+                'r'        => (int) ($data['max_university_residency_years'] ?? 6),
+                'action'   => $data['university_residency_action'] ?? 'BLOCK',
+                'override' => (int) ($data['allow_registrar_override'] ?? 1),
+                'uid'      => $userId,
+            ]
+        );
+    } else {
+        execute_sql(
+            'INSERT INTO fhe_settings (max_allowed_years, max_allowed_semesters, max_university_residency_years, university_residency_action, allow_registrar_override, updated_by)
+             VALUES (:y, :s, :r, :action, :override, :uid)',
+            [
+                'y'        => (int) ($data['max_allowed_years'] ?? 5),
+                's'        => (int) ($data['max_allowed_semesters'] ?? 10),
+                'r'        => (int) ($data['max_university_residency_years'] ?? 6),
+                'action'   => $data['university_residency_action'] ?? 'BLOCK',
+                'override' => (int) ($data['allow_registrar_override'] ?? 1),
+                'uid'      => $userId,
+            ]
+        );
+    }
+}
+
+/* ─── Enrollment Overrides ─── */
+
+function has_active_enrollment_override(int $studentId, string $type): bool
+{
+    $row = fetch_one(
+        'SELECT id FROM enrollment_overrides WHERE student_id = :sid AND override_type = :type AND status = "ACTIVE"
+         AND (approved_until_term_id IS NULL OR approved_until_term_id >= (SELECT id FROM academic_terms WHERE is_current = 1 LIMIT 1)) LIMIT 1',
+        ['sid' => $studentId, 'type' => $type]
+    );
+    return $row !== null;
+}
+
+function create_enrollment_override(int $studentId, string $type, string $reason, ?int $untilTermId, int $approvedBy): int
+{
+    execute_sql(
+        'INSERT INTO enrollment_overrides (student_id, override_type, reason, approved_until_term_id, approved_by)
+         VALUES (:sid, :type, :reason, :tid, :by)',
+        [
+            'sid'  => $studentId,
+            'type' => $type,
+            'reason' => $reason,
+            'tid'  => $untilTermId,
+            'by'   => $approvedBy,
+        ]
+    );
+    return (int) db()->lastInsertId();
+}
+
+function get_student_overrides(int $studentId): array
+{
+    return fetch_all(
+        'SELECT eo.*, CONCAT(u.first_name, " ", u.last_name) AS approved_by_name
+         FROM enrollment_overrides eo
+         LEFT JOIN users u ON u.id = eo.approved_by
+         WHERE eo.student_id = :sid ORDER BY eo.created_at DESC',
+        ['sid' => $studentId]
+    );
+}
+
+function revoke_enrollment_override(int $overrideId): void
+{
+    execute_sql('UPDATE enrollment_overrides SET status = "REVOKED" WHERE id = :id', ['id' => $overrideId]);
+}
+
+/* ─── University Residency Check ─── */
+
+function check_university_residency(int $studentId, ?array $student = null): array
+{
+    if (!$student) {
+        $student = fetch_one('SELECT * FROM students WHERE id = :id LIMIT 1', ['id' => $studentId]);
+    }
+    if (!$student) {
+        return ['blocked' => false, 'reason' => 'Student not found.', 'years_enrolled' => 0, 'max_years' => 0, 'has_override' => false];
+    }
+
+    $fheSettings = get_fhe_settings();
+    $maxYears = (int) $fheSettings['max_university_residency_years'];
+    $action = $fheSettings['university_residency_action'];
+
+    $enrollmentYears = fetch_one(
+        'SELECT COUNT(DISTINCT ay.start_year) AS years
+         FROM enrollment_requests er
+         INNER JOIN academic_terms at2 ON at2.id = er.academic_term_id
+         INNER JOIN academic_years ay ON ay.id = at2.academic_year_id
+         WHERE er.student_id = :sid AND er.workflow_status IN ("approved", "finalized")',
+        ['sid' => $studentId]
+    );
+    $yearsEnrolled = (int) ($enrollmentYears['years'] ?? 0);
+
+    $hasOverride = has_active_enrollment_override($studentId, 'UNIVERSITY_RESIDENCY');
+
+    if ($yearsEnrolled >= $maxYears && !$hasOverride) {
+        $reason = 'University maximum residency exceeded (' . $yearsEnrolled . '/' . $maxYears . ' years).';
+        if ($action === 'BLOCK') {
+            return ['blocked' => true, 'reason' => $reason, 'years_enrolled' => $yearsEnrolled, 'max_years' => $maxYears, 'has_override' => false];
+        }
+        return ['blocked' => false, 'reason' => $reason, 'years_enrolled' => $yearsEnrolled, 'max_years' => $maxYears, 'has_override' => false, 'warning' => true];
+    }
+
+    return ['blocked' => false, 'reason' => '', 'years_enrolled' => $yearsEnrolled, 'max_years' => $maxYears, 'has_override' => $hasOverride];
+}
+
 /* ─── FHE Eligibility Engine ─── */
 
 function check_fhe_eligibility(int $studentId, ?array $student = null, ?array $term = null): array
@@ -340,95 +467,122 @@ function check_fhe_eligibility(int $studentId, ?array $student = null, ?array $t
         return ['eligible' => false, 'reason' => 'Student already holds a bachelor\'s degree — not eligible for FHE.', 'student_type' => (string) ($student['classification'] ?? 'New')];
     }
 
-    $rules = get_scholarship_rules((int) $scholarship['id']);
+    $fheSettings = get_fhe_settings();
     $classification = (string) ($student['classification'] ?? 'New');
     $programId = (int) $student['program_id'];
     $yearLevel = (int) $student['year_level'];
     $academicStatus = (string) ($student['academic_status'] ?? 'active');
 
-    if ($rules && $rules['status'] === 'ACTIVE') {
-        if ($rules['requires_active_enrollment'] && $academicStatus !== 'active') {
-            return ['eligible' => false, 'reason' => 'Student is not actively enrolled (status: ' . $academicStatus . ').', 'student_type' => $classification];
-        }
-        if (!$rules['allow_during_loa'] && $academicStatus === 'on_leave') {
-            return ['eligible' => false, 'reason' => 'FHE not available during LOA — requires registrar evaluation on return.', 'student_type' => $classification];
-        }
-    }
-
+    $allowedSemesters = (int) $fheSettings['max_allowed_semesters'];
     $prescribedYears = get_program_duration($programId);
     $prescribedTerms = $prescribedYears * 2;
-    $gracePeriod = $rules ? (int) ($rules['grace_period_terms'] ?? 2) : 2;
 
     $activeSS = get_active_student_scholarship($studentId, 'RA10931');
     $internalConsumed = 0;
+    $loaExcluded = 0;
+    $termHistory = [];
+
     if ($activeSS) {
-        $internalConsumed = get_consumed_scholarship_terms((int) $activeSS['id']);
+        $terms = get_student_scholarship_terms((int) $activeSS['id']);
+        foreach ($terms as $t) {
+            $termHistory[] = $t;
+            if ($t['consumes_scholarship']) {
+                $internalConsumed++;
+            }
+            if ($t['status'] === 'LOA') {
+                $loaExcluded++;
+            }
+        }
     }
 
-    $previousGovtTerms = get_previous_government_assistance_terms($studentId);
-
-    $totalConsumed = $internalConsumed + $previousGovtTerms;
-    $allowableTerms = $prescribedTerms + $gracePeriod;
-    $remaining = $allowableTerms - $totalConsumed;
-
-    $studentType = $classification;
-    $notes = [];
-    $notes[] = 'Program: ' . $prescribedYears . '-year (' . $prescribedTerms . ' terms)';
-    $notes[] = 'Grace period: ' . $gracePeriod . ' terms';
-
-    if ($classification === 'Shiftee' || $classification === 'Shiftee') {
-        $shiftCount = fetch_one(
-            'SELECT COUNT(*) AS cnt FROM shifting_requests WHERE student_id = :sid AND workflow_status = "approved"',
-            ['sid' => $studentId]
-        );
-        $shifts = (int) ($shiftCount['cnt'] ?? 0);
-        if ($shifts > 0) {
-            $notes[] = 'Shiftee — previous FHE terms (' . $internalConsumed . ' internal) preserved.';
+    $previousFhe = 0;
+    $previousHei = '';
+    $previousHeiType = 'OTHER';
+    $pfaRecords = get_previous_financial_assistance($studentId);
+    foreach ($pfaRecords as $p) {
+        if ((int) ($p['government_funded'] ?? 0) && !(int) ($p['has_bachelor_degree'] ?? 0) && (int) ($p['fhe_verified'] ?? 0)) {
+            $previousFhe += (int) ($p['previous_fhe_semesters'] ?? 0);
+            if ($previousHei === '') {
+                $previousHei = $p['previous_hei'] ?? '';
+                $previousHeiType = $p['previous_hei_type'] ?? 'OTHER';
+            }
         }
-        if ($rules && $rules['max_shifting_year_level'] && $yearLevel > (int) $rules['max_shifting_year_level']) {
-            return ['eligible' => false, 'reason' => 'Shifting only allowed up to Year ' . $rules['max_shifting_year_level'] . '.', 'student_type' => $studentType];
+    }
+
+    $totalConsumed = $internalConsumed + $previousFhe;
+    $remaining = $allowedSemesters - $totalConsumed;
+
+    $notes = [];
+    $notes[] = 'Allowed: ' . $allowedSemesters . ' semesters (' . $fheSettings['max_allowed_years'] . ' years)';
+    if ($previousFhe > 0) {
+        $notes[] = 'Previous HEI (' . h($previousHei) . '): ' . $previousFhe . ' semesters';
+    }
+    if ($internalConsumed > 0) {
+        $notes[] = 'CvSU FHE consumed: ' . $internalConsumed . ' semesters';
+    }
+    if ($loaExcluded > 0) {
+        $notes[] = 'LOA excluded: ' . $loaExcluded . ' term(s)';
+    }
+
+    if ($classification === 'Shiftee') {
+        $notes[] = 'Shiftee — previous FHE terms (' . $internalConsumed . ' internal) preserved.';
+        $rules = get_scholarship_rules((int) $scholarship['id']);
+        $maxShiftYl = (int) setting('max_shifting_year_level', '2');
+        if ($maxShiftYl > 0 && $yearLevel > $maxShiftYl) {
+            return ['eligible' => false, 'reason' => 'Shifting only allowed up to Year ' . $maxShiftYl . '.', 'student_type' => $classification];
         }
     }
 
     if ($classification === 'Transferee') {
-        if ($previousGovtTerms > 0) {
-            $notes[] = 'Transferee — ' . $previousGovtTerms . ' previous government-funded term(s) counted.';
+        if ($previousFhe > 0) {
+            $notes[] = 'Transferee — ' . $previousFhe . ' previous FHE semester(s) counted.';
         } else {
-            $notes[] = 'Transferee — no previous government-funded assistance recorded.';
+            $notes[] = 'Transferee — no verified previous FHE semesters recorded.';
         }
     }
 
     if ($classification === 'Returnee') {
-        $notes[] = 'Returnee — LOA period(s) should not consume FHE. Registrar evaluation may be needed.';
+        $notes[] = 'Returnee — LOA period(s) excluded from FHE consumption.';
     }
 
-    $notes[] = 'Total consumed: ' . $totalConsumed . ' of ' . $allowableTerms . ' allowable terms (' . $remaining . ' remaining).';
+    $notes[] = 'Total consumed: ' . $totalConsumed . ' of ' . $allowedSemesters . ' (' . $remaining . ' remaining).';
 
-    if ($remaining <= 0) {
+    $hasOverride = has_active_enrollment_override($studentId, 'FHE');
+
+    if ($remaining <= 0 && !$hasOverride) {
         return [
-            'eligible'        => false,
-            'reason'          => 'FHE entitlement fully consumed (' . $totalConsumed . ' of ' . $allowableTerms . ' terms). Remaining: ' . $remaining . '.',
-            'student_type'    => $studentType,
-            'consumed'        => $totalConsumed,
-            'allowable'       => $allowableTerms,
-            'remaining'       => $remaining,
-            'notes'           => $notes,
+            'eligible'            => false,
+            'reason'              => 'FHE allowance exhausted (' . $totalConsumed . ' of ' . $allowedSemesters . ' semesters used).',
+            'student_type'        => $classification,
+            'consumed'            => $totalConsumed,
+            'internal_consumed'   => $internalConsumed,
+            'previous_fhe'        => $previousFhe,
+            'loa_excluded'        => $loaExcluded,
+            'allowable'           => $allowedSemesters,
+            'remaining'           => $remaining,
+            'prescribed_years'    => $prescribedYears,
+            'notes'               => $notes,
+            'has_override'        => false,
+            'previous_hei'        => $previousHei,
+            'previous_hei_type'   => $previousHeiType,
         ];
     }
 
     return [
-        'eligible'             => true,
-        'reason'               => 'Eligible for FHE',
-        'student_type'         => $studentType,
-        'consumed'             => $totalConsumed,
-        'internal_consumed'    => $internalConsumed,
-        'previous_govt_terms'  => $previousGovtTerms,
-        'allowable'            => $allowableTerms,
-        'remaining'            => $remaining,
-        'prescribed_years'     => $prescribedYears,
-        'grace_period'         => $gracePeriod,
-        'notes'                => $notes,
-        'student_scholarship'  => $activeSS,
+        'eligible'            => true,
+        'reason'              => $hasOverride ? 'FHE exhausted but Registrar override active.' : 'Eligible for FHE',
+        'student_type'        => $classification,
+        'consumed'            => $totalConsumed,
+        'internal_consumed'   => $internalConsumed,
+        'previous_fhe'        => $previousFhe,
+        'loa_excluded'        => $loaExcluded,
+        'allowable'           => $allowedSemesters,
+        'remaining'           => $remaining,
+        'prescribed_years'    => $prescribedYears,
+        'notes'               => $notes,
+        'has_override'        => $hasOverride,
+        'previous_hei'        => $previousHei,
+        'previous_hei_type'   => $previousHeiType,
     ];
 }
 

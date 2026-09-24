@@ -73,6 +73,7 @@ function db(): PDO
         ensure_student_subjects_grades_locked_column();
         ensure_scholarship_tables();
         ensure_fhe_evaluation_tables();
+        ensure_fhe_monitoring_tables();
     }
     return $pdo;
 }
@@ -1555,11 +1556,11 @@ function financial_profile(array $student, ?array $term = null): array
     $currentStartYear = (int) ($term['start_year'] ?? date('Y'));
     $entryYear = (int) $student['entry_year'];
     $yearsInCollege = max(1, $currentStartYear - $entryYear + 1);
-    $override = (string) ($student['ra10931_override'] ?? 'auto');
 
-    if ($override !== '' && $override !== 'auto') {
-        $status = $override;
-    } elseif ($yearsInCollege <= 5) {
+    $studentId = (int) $student['id'];
+    $fheElig = $studentId > 0 ? check_fhe_eligibility($studentId, $student) : ['eligible' => false];
+
+    if ($fheElig['eligible']) {
         $status = 'free';
     } else {
         $status = 'tuition';
@@ -1572,6 +1573,7 @@ function financial_profile(array $student, ?array $term = null): array
         'status' => $status,
         'label' => $status === 'free' ? 'RA 10931 (Free Education)' : 'Tuition Paying',
         'tuition_per_unit' => $tuitionPerUnit,
+        'fhe_eligibility' => $fheElig,
     ];
 }
 
