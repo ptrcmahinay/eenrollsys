@@ -271,10 +271,18 @@ function get_loa_stats(): array
 
 function expire_overdue_loa(): void
 {
-    execute_sql(
-        'UPDATE leave_of_absence SET status = "expired", updated_at = NOW()
-         WHERE status = "active" AND effective_date_to < CURDATE()'
-    );
+    try {
+        global $pdo;
+        if (!($pdo instanceof PDO)) return;
+        $stmt = $pdo->query("SHOW TABLES LIKE 'leave_of_absence'");
+        if (!$stmt || !$stmt->fetch()) return;
+
+        execute_sql(
+            'UPDATE leave_of_absence SET status = "expired", updated_at = NOW()
+             WHERE status = "active" AND effective_date_to < CURDATE()'
+        );
+    } catch (\Throwable $e) {
+    }
 }
 
 function get_semester_label(string $semester): string
