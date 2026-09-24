@@ -15,13 +15,12 @@ $data = [
     'last_name'         => trim($_POST['last_name'] ?? ''),
     'sex'               => trim($_POST['sex'] ?? ''),
     'birth_date'        => trim($_POST['birth_date'] ?? '') ?: null,
+    'place_of_birth'    => trim($_POST['place_of_birth'] ?? ''),
     'contact_number'    => trim($_POST['contact_number'] ?? ''),
-    'email_address'     => trim($_POST['email_address'] ?? ''),
+    'landline_no'       => trim($_POST['landline_no'] ?? ''),
     'address'           => trim($_POST['address'] ?? ''),
-    'barangay'          => trim($_POST['barangay'] ?? ''),
-    'municipality'      => trim($_POST['municipality'] ?? ''),
-    'province'          => trim($_POST['province'] ?? ''),
-    'civil_status'      => trim($_POST['civil_status'] ?? ''),
+    'religion'          => trim($_POST['religion'] ?? ''),
+    'nationality'       => trim($_POST['nationality'] ?? 'Filipino'),
     'program_id'        => (int) ($_POST['program_id'] ?? 0),
     'year_level'        => (int) ($_POST['year_level'] ?? 1),
     'entry_year'        => (int) ($_POST['entry_year'] ?? date('Y')),
@@ -42,11 +41,11 @@ if ($existing !== null) {
 }
 
 execute_sql(
-    'INSERT INTO students (student_number, first_name, middle_name, last_name, sex, birth_date,
-        contact_number, email_address, address, barangay, municipality, province, civil_status,
+    'INSERT INTO students (student_number, first_name, middle_name, last_name, sex, birth_date, place_of_birth,
+        contact_number, landline_no, address, religion, nationality,
         program_id, year_level, entry_year, classification, status, ra10931_override, academic_status, record_status, created_at)
-     VALUES (:student_number, :first_name, :middle_name, :last_name, :sex, :birth_date,
-        :contact_number, :email_address, :address, :barangay, :municipality, :province, :civil_status,
+     VALUES (:student_number, :first_name, :middle_name, :last_name, :sex, :birth_date, :place_of_birth,
+        :contact_number, :landline_no, :address, :religion, :nationality,
         :program_id, :year_level, :entry_year, :classification, :status, :ra10931_override, "active", "active", NOW())',
     $data
 );
@@ -74,6 +73,24 @@ if ($elementarySchool !== '' || $highSchool !== '') {
             'hs'  => $highSchool ?: null,
             'hy'  => $highSchoolYear ?: null,
             'ht'  => $highSchoolType ?: null,
+        ]
+    );
+}
+
+$guardianName = trim($_POST['guardian_name'] ?? '');
+if ($guardianName !== '') {
+    execute_sql(
+        'INSERT INTO student_guardians
+            (student_id, guardian_type, name, address, occupation, landline_no, cellphone_no)
+         VALUES
+            (:sid, "parent", :name, :addr, :occ, :land, :cell)',
+        [
+            'sid'  => $studentId,
+            'name' => $guardianName,
+            'addr' => trim($_POST['guardian_address'] ?? '') ?: null,
+            'occ'  => trim($_POST['guardian_occupation'] ?? '') ?: null,
+            'land' => trim($_POST['guardian_landline'] ?? '') ?: null,
+            'cell' => trim($_POST['guardian_cellphone'] ?? '') ?: null,
         ]
     );
 }

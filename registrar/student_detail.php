@@ -36,9 +36,8 @@ if (is_post()) {
     if ($action === 'save_personal') {
         execute_sql(
             'UPDATE students SET first_name = :fn, middle_name = :mn, last_name = :ln, sex = :sex,
-             birth_date = :bd, contact_number = :cn, email_address = :ea, address = :addr,
-             barangay = :brgy, municipality = :muni, province = :prov, landline_no = :land,
-             religion = :rel, nationality = :nat, civil_status = :cs
+             birth_date = :bd, place_of_birth = :pob, contact_number = :cn, email_address = :ea,
+             address = :addr, landline_no = :land, religion = :rel, nationality = :nat, civil_status = :cs
              WHERE id = :id',
             [
                 'fn'   => trim($_POST['first_name'] ?? ''),
@@ -46,12 +45,10 @@ if (is_post()) {
                 'ln'   => trim($_POST['last_name'] ?? ''),
                 'sex'  => trim($_POST['sex'] ?? ''),
                 'bd'   => trim($_POST['birth_date'] ?? '') ?: null,
+                'pob'  => trim($_POST['place_of_birth'] ?? ''),
                 'cn'   => trim($_POST['contact_number'] ?? ''),
                 'ea'   => trim($_POST['email_address'] ?? ''),
                 'addr' => trim($_POST['address'] ?? ''),
-                'brgy' => trim($_POST['barangay'] ?? ''),
-                'muni' => trim($_POST['municipality'] ?? ''),
-                'prov' => trim($_POST['province'] ?? ''),
                 'land' => trim($_POST['landline_no'] ?? ''),
                 'rel'  => trim($_POST['religion'] ?? ''),
                 'nat'  => trim($_POST['nationality'] ?? ''),
@@ -206,23 +203,19 @@ ob_start();
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;font-size:13px;margin-top:10px;">
                 <div><label style="font-weight:600;display:block;">Sex</label><select name="sex" style="width:100%;"><option value="">—</option><option value="Male" <?= ($student['sex'] ?? '') === 'Male' ? 'selected' : '' ?>>Male</option><option value="Female" <?= ($student['sex'] ?? '') === 'Female' ? 'selected' : '' ?>>Female</option></select></div>
                 <div><label style="font-weight:600;display:block;">Date of Birth</label><input type="date" name="birth_date" value="<?= h($student['birth_date'] ?? '') ?>" style="width:100%;"></div>
-                <div><label style="font-weight:600;display:block;">Civil Status</label><select name="civil_status" style="width:100%;"><option value="">—</option><?php foreach (['Single','Married','Widowed','Separated','Divorced'] as $cs): ?><option value="<?= $cs ?>" <?= ($student['civil_status'] ?? '') === $cs ? 'selected' : '' ?>><?= $cs ?></option><?php endforeach; ?></select></div>
+                <div><label style="font-weight:600;display:block;">Place of Birth</label><input type="text" name="place_of_birth" value="<?= h($student['place_of_birth'] ?? '') ?>" style="width:100%;"></div>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;margin-top:10px;">
-                <div><label style="font-weight:600;display:block;">Contact Number</label><input type="text" name="contact_number" value="<?= h($student['contact_number'] ?? '') ?>" style="width:100%;"></div>
-                <div><label style="font-weight:600;display:block;">Landline No.</label><input type="text" name="landline_no" value="<?= h($student['landline_no'] ?? '') ?>" style="width:100%;"></div>
-            </div>
-            <div style="font-size:13px;margin-top:10px;"><label style="font-weight:600;display:block;">Email</label><input type="email" name="email_address" value="<?= h($student['email_address'] ?? '') ?>" style="width:100%;"></div>
-            <div style="font-size:13px;margin-top:10px;"><label style="font-weight:600;display:block;">Address</label><input type="text" name="address" value="<?= h($student['address']) ?>" style="width:100%;"></div>
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;font-size:13px;margin-top:10px;">
-                <div><label style="font-weight:600;display:block;">Barangay</label><input type="text" name="barangay" value="<?= h($student['barangay'] ?? '') ?>" style="width:100%;"></div>
-                <div><label style="font-weight:600;display:block;">Municipality</label><input type="text" name="municipality" value="<?= h($student['municipality'] ?? '') ?>" style="width:100%;"></div>
-                <div><label style="font-weight:600;display:block;">Province</label><input type="text" name="province" value="<?= h($student['province'] ?? '') ?>" style="width:100%;"></div>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;margin-top:10px;">
                 <div><label style="font-weight:600;display:block;">Religion</label><input type="text" name="religion" value="<?= h($student['religion'] ?? '') ?>" style="width:100%;"></div>
                 <div><label style="font-weight:600;display:block;">Nationality</label><input type="text" name="nationality" value="<?= h($student['nationality'] ?? 'Filipino') ?>" style="width:100%;"></div>
+                <div><label style="font-weight:600;display:block;">Civil Status</label><select name="civil_status" style="width:100%;"><option value="">—</option><?php foreach (['Single','Married','Widowed','Separated','Divorced'] as $cs): ?><option value="<?= $cs ?>" <?= ($student['civil_status'] ?? '') === $cs ? 'selected' : '' ?>><?= $cs ?></option><?php endforeach; ?></select></div>
             </div>
+            <div style="font-size:13px;margin-top:10px;"><label style="font-weight:600;display:block;">Home Address</label><input type="text" name="address" value="<?= h($student['address']) ?>" style="width:100%;"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;margin-top:10px;">
+                <div><label style="font-weight:600;display:block;">Landline No.</label><input type="text" name="landline_no" value="<?= h($student['landline_no'] ?? '') ?>" style="width:100%;"></div>
+                <div><label style="font-weight:600;display:block;">Cellphone No.</label><input type="text" name="contact_number" value="<?= h($student['contact_number'] ?? '') ?>" style="width:100%;"></div>
+            </div>
+            <div style="font-size:13px;margin-top:10px;"><label style="font-weight:600;display:block;">Email</label><input type="email" name="email_address" value="<?= h($student['email_address'] ?? '') ?>" style="width:100%;"></div>
             <div style="margin-top:12px;"><button class="btn" type="submit">Save Personal Information</button></div>
         </form>
     </div>

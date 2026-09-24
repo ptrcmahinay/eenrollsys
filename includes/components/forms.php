@@ -116,15 +116,27 @@ function render_student_form(array $programs, array $sections = [], string $gene
                 <div><label style="font-weight:600;display:block;">Date of Birth</label><input type="date" name="birth_date" style="width:100%;"></div>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:13px;margin-top:8px;">
-                <div><label style="font-weight:600;display:block;">Contact Number</label><input type="text" name="contact_number" style="width:100%;"></div>
-                <div><label style="font-weight:600;display:block;">Email</label><input type="email" name="email_address" style="width:100%;"></div>
-                <div><label style="font-weight:600;display:block;">Civil Status</label><select name="civil_status" style="width:100%;"><option value="">—</option><option value="Single">Single</option><option value="Married">Married</option><option value="Widowed">Widowed</option><option value="Separated">Separated</option></select></div>
+                <div><label style="font-weight:600;display:block;">Place of Birth</label><input type="text" name="place_of_birth" style="width:100%;"></div>
+                <div><label style="font-weight:600;display:block;">Religion</label><input type="text" name="religion" style="width:100%;"></div>
+                <div><label style="font-weight:600;display:block;">Nationality</label><input type="text" name="nationality" value="Filipino" style="width:100%;"></div>
             </div>
-            <div style="font-size:13px;margin-top:8px;"><label style="font-weight:600;display:block;">Address</label><input type="text" name="address" style="width:100%;" required></div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:13px;margin-top:8px;">
-                <div><label style="font-weight:600;display:block;">Barangay</label><input type="text" name="barangay" style="width:100%;"></div>
-                <div><label style="font-weight:600;display:block;">Municipality</label><input type="text" name="municipality" style="width:100%;"></div>
-                <div><label style="font-weight:600;display:block;">Province</label><input type="text" name="province" style="width:100%;"></div>
+            <div style="font-size:13px;margin-top:8px;"><label style="font-weight:600;display:block;">Home Address *</label><input type="text" name="address" placeholder="House No. & Street, Barangay, Town, Province" style="width:100%;" required></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;margin-top:8px;">
+                <div><label style="font-weight:600;display:block;">Landline No.</label><input type="text" name="landline_no" style="width:100%;"></div>
+                <div><label style="font-weight:600;display:block;">Cellphone No.</label><input type="text" name="contact_number" style="width:100%;"></div>
+            </div>
+        </div>
+
+        <div style="margin-bottom:12px;">
+            <div style="font-weight:700;color:var(--primary,#3b82f6);font-size:13px;margin-bottom:6px;border-bottom:1px solid var(--line,#e5e7eb);padding-bottom:4px;">Parent / Guardian</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">
+                <div><label style="font-weight:600;display:block;">Name</label><input type="text" name="guardian_name" style="width:100%;"></div>
+                <div><label style="font-weight:600;display:block;">Occupation</label><input type="text" name="guardian_occupation" style="width:100%;"></div>
+            </div>
+            <div style="font-size:13px;margin-top:8px;"><label style="font-weight:600;display:block;">Address</label><input type="text" name="guardian_address" style="width:100%;"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;margin-top:8px;">
+                <div><label style="font-weight:600;display:block;">Landline No.</label><input type="text" name="guardian_landline" style="width:100%;"></div>
+                <div><label style="font-weight:600;display:block;">Cellphone No.</label><input type="text" name="guardian_cellphone" style="width:100%;"></div>
             </div>
         </div>
 

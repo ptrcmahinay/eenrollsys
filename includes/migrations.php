@@ -982,6 +982,7 @@ function ensure_student_extended_fields(): void
             'province'           => "ADD COLUMN `province` VARCHAR(150) NULL",
             'landline_no'        => "ADD COLUMN `landline_no` VARCHAR(20) NULL",
             'photo_path'         => "ADD COLUMN `photo_path` VARCHAR(255) NULL",
+            'place_of_birth'     => "ADD COLUMN `place_of_birth` VARCHAR(255) NULL",
         ];
 
         $existing = [];
