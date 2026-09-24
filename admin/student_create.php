@@ -52,6 +52,32 @@ execute_sql(
 );
 $studentId = (int) db()->lastInsertId();
 
+$elementarySchool = trim($_POST['elementary_school'] ?? '');
+$elementaryYear = (int) ($_POST['elementary_year_graduated'] ?? 0);
+$elementaryType = trim($_POST['elementary_school_type'] ?? '');
+$highSchool = trim($_POST['high_school'] ?? '');
+$highSchoolYear = (int) ($_POST['high_school_year_graduated'] ?? 0);
+$highSchoolType = trim($_POST['high_school_school_type'] ?? '');
+
+if ($elementarySchool !== '' || $highSchool !== '') {
+    execute_sql(
+        'INSERT INTO student_educational_background
+            (student_id, elementary_school, elementary_year_graduated, elementary_school_type,
+             high_school, high_school_year_graduated, high_school_school_type)
+         VALUES
+            (:sid, :es, :ey, :et, :hs, :hy, :ht)',
+        [
+            'sid' => $studentId,
+            'es'  => $elementarySchool ?: null,
+            'ey'  => $elementaryYear ?: null,
+            'et'  => $elementaryType ?: null,
+            'hs'  => $highSchool ?: null,
+            'hy'  => $highSchoolYear ?: null,
+            'ht'  => $highSchoolType ?: null,
+        ]
+    );
+}
+
 $username = trim($_POST['username'] ?? '');
 $email = trim($_POST['email'] ?? '');
 $password = (string) ($_POST['password'] ?? '');

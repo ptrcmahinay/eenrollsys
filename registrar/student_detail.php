@@ -320,7 +320,7 @@ ob_start();
             <div><label style="font-weight:600;display:block;">School Type</label><select name="high_school_school_type" style="width:100%;"><option value="">—</option><option value="public" <?= ($education['high_school_school_type'] ?? '') === 'public' ? 'selected' : '' ?>>Public</option><option value="private" <?= ($education['high_school_school_type'] ?? '') === 'private' ? 'selected' : '' ?>>Private</option></select></div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;font-size:13px;">
-            <div style="grid-column:span 4;font-weight:700;color:var(--primary,#3b82f6);">Previous School (Transferee / Cross-Enrollee)</div>
+            <div style="grid-column:span 4;font-weight:700;color:var(--primary,#3b82f6);">Previous School Information</div>
             <div><label style="font-weight:600;display:block;">School Last Attended</label><input type="text" name="last_school_attended" value="<?= h($education['last_school_attended'] ?? '') ?>" style="width:100%;"></div>
             <div><label style="font-weight:600;display:block;">School Address</label><input type="text" name="last_school_address" value="<?= h($education['last_school_address'] ?? '') ?>" style="width:100%;"></div>
             <div><label style="font-weight:600;display:block;">Previous Program</label><input type="text" name="last_school_program" value="<?= h($education['last_school_program'] ?? '') ?>" style="width:100%;"></div>
