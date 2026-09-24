@@ -323,7 +323,7 @@ ob_start();
         <div style="margin-bottom:12px;position:relative;">
             <label style="font-weight:600;font-size:13px;">Search Student *</label>
             <input type="text" id="loa_student_search" style="width:100%;" placeholder="Type student number, first name, or last name..." autocomplete="off">
-            <div id="loa_student_dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #e5e7eb;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:10;max-height:240px;overflow-y:auto;"></div>
+            <div id="loa_student_dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #e5e7eb;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:1001;max-height:240px;overflow-y:auto;"></div>
             <input type="hidden" id="loa_student_no" name="student_no" value="">
             <input type="hidden" id="loa_student_id" name="student_id" value="0">
         </div>
