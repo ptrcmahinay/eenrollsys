@@ -11,6 +11,8 @@ require_once __DIR__ . '/components/actions.php';
 require_once __DIR__ . '/grading_engine.php';
 require_once __DIR__ . '/fee_engine.php';
 require_once __DIR__ . '/shifting_engine.php';
+require_once __DIR__ . '/tor_engine.php';
+require_once __DIR__ . '/loa_engine.php';
 require_once __DIR__ . '/../vendor/autoload.php';
 
 define('APP_ROOT', realpath(__DIR__ . '/..') ?: __DIR__ . '/..');
@@ -56,6 +58,9 @@ function db(): PDO
         ensure_student_academic_placements_table();
         ensure_transferee_records_table();
         ensure_transferee_subjects_table();
+        ensure_tor_requests_table();
+        ensure_loa_requests_table();
+        ensure_student_status_column();
         ensure_grading_engine_tables();
         ensure_grades_term_id_column();
         ensure_offering_term_protection();

@@ -954,9 +954,123 @@ function ensure_composite_indexes(): void
             if (!$stmt || !$stmt->fetch()) {
                 try {
                     $pdo->exec("ALTER TABLE `{$table}` ADD INDEX `{$idx['name']}` {$idx['cols']}");
-                } catch (\Throwable $e) {
-                }
-            }
+    } catch (\Throwable $e) {
+    }
+}
+
+function ensure_tor_requests_table(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    try {
+        global $pdo;
+        if (!($pdo instanceof PDO)) return;
+
+        $stmt = $pdo->query("SHOW TABLES LIKE 'tor_requests'");
+        if (!$stmt || !$stmt->fetch()) {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `tor_requests` (
+                    `id`                    INT AUTO_INCREMENT PRIMARY KEY,
+                    `student_id`            INT NOT NULL,
+                    `document_number`       VARCHAR(50) NULL,
+                    `purpose`               ENUM('employment','transfer','further_studies','scholarship','board_exam','personal','immigration','other') NOT NULL,
+                    `purpose_detail`        VARCHAR(255) NULL,
+                    `destination`           VARCHAR(255) NULL,
+                    `copies`                INT NOT NULL DEFAULT 1,
+                    `workflow_status`       ENUM('pending','under_review','for_clearance','approved','processing','ready_for_release','released','rejected','cancelled') NOT NULL DEFAULT 'pending',
+                    `academic_cleared`      TINYINT(1) NOT NULL DEFAULT 0,
+                    `financial_cleared`     TINYINT(1) NOT NULL DEFAULT 0,
+                    `library_cleared`       TINYINT(1) NOT NULL DEFAULT 0,
+                    `registrar_verified`    TINYINT(1) NOT NULL DEFAULT 0,
+                    `remarks`               TEXT NULL,
+                    `reviewed_by`           INT NULL,
+                    `reviewed_at`           TIMESTAMP NULL,
+                    `approved_by`           INT NULL,
+                    `approved_at`           TIMESTAMP NULL,
+                    `released_by`           INT NULL,
+                    `released_at`           TIMESTAMP NULL,
+                    `created_at`            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at`            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    CONSTRAINT `fk_tor_student` FOREIGN KEY (`student_id`) REFERENCES `students`(`id`) ON DELETE CASCADE,
+                    INDEX `idx_tor_student` (`student_id`),
+                    INDEX `idx_tor_status` (`workflow_status`),
+                    INDEX `idx_tor_docnum` (`document_number`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+            ");
+        }
+    } catch (\Throwable $e) {
+    }
+}
+
+function ensure_loa_requests_table(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    try {
+        global $pdo;
+        if (!($pdo instanceof PDO)) return;
+
+        $stmt = $pdo->query("SHOW TABLES LIKE 'loa_requests'");
+        if (!$stmt || !$stmt->fetch()) {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `loa_requests` (
+                    `id`                    INT AUTO_INCREMENT PRIMARY KEY,
+                    `student_id`            INT NOT NULL,
+                    `term_id`               INT NOT NULL,
+                    `reason_category`       ENUM('medical','personal','family','financial','academic','work','other') NOT NULL,
+                    `reason_detail`         TEXT NULL,
+                    `expected_return_term_id` INT NULL,
+                    `workflow_status`       ENUM('submitted','adviser_review','chair_review','registrar_review','approved','rejected','cancelled','returned') NOT NULL DEFAULT 'submitted',
+                    `adviser_status`        ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+                    `adviser_remark`        TEXT NULL,
+                    `adviser_processed_by`  INT NULL,
+                    `adviser_processed_at`  TIMESTAMP NULL,
+                    `chair_status`          ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+                    `chair_remark`          TEXT NULL,
+                    `chair_processed_by`    INT NULL,
+                    `chair_processed_at`    TIMESTAMP NULL,
+                    `registrar_status`      ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+                    `registrar_remark`      TEXT NULL,
+                    `registrar_processed_by` INT NULL,
+                    `registrar_processed_at` TIMESTAMP NULL,
+                    `return_processed_by`   INT NULL,
+                    `return_processed_at`   TIMESTAMP NULL,
+                    `remarks`               TEXT NULL,
+                    `created_at`            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at`            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    CONSTRAINT `fk_loa_student` FOREIGN KEY (`student_id`) REFERENCES `students`(`id`) ON DELETE CASCADE,
+                    CONSTRAINT `fk_loa_term` FOREIGN KEY (`term_id`) REFERENCES `academic_terms`(`id`) ON DELETE RESTRICT,
+                    CONSTRAINT `fk_loa_return_term` FOREIGN KEY (`expected_return_term_id`) REFERENCES `academic_terms`(`id`) ON DELETE SET NULL,
+                    INDEX `idx_loa_student` (`student_id`),
+                    INDEX `idx_loa_status` (`workflow_status`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+            ");
+        }
+    } catch (\Throwable $e) {
+    }
+}
+
+function ensure_student_status_column(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    try {
+        global $pdo;
+        if (!($pdo instanceof PDO)) return;
+
+        $stmt = $pdo->query("SHOW COLUMNS FROM `students` LIKE 'academic_status'");
+        if (!$stmt || !$stmt->fetch()) {
+            $pdo->exec("ALTER TABLE `students` ADD COLUMN `academic_status` ENUM('active','on_leave','graduated','transferred','withdrawn') NOT NULL DEFAULT 'active' AFTER `shifting_request_id`");
+        }
+    } catch (\Throwable $e) {
+    }
+}
         }
     } catch (\Throwable $e) {
     }

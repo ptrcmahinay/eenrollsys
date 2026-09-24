@@ -15,6 +15,11 @@ if ($student === null || $currentTerm === null) {
 $placement = get_student_placement((int) $student['id']);
 $enrollmentYearLevel = $placement ? (int) $placement['year_level'] : (int) $student['year_level'];
 
+if (is_student_on_leave((int) $student['id'])) {
+    flash('error', 'Enrollment is unavailable while you are on approved Leave of Absence. Please process your return from LOA first.');
+    redirect('student/dashboard.php');
+}
+
 $latestRequest = fetch_one(
     'SELECT * FROM enrollment_requests WHERE student_id = :student_id AND term_id = :term_id ORDER BY id DESC LIMIT 1',
     ['student_id' => (int) $student['id'], 'term_id' => (int) $currentTerm['id']]
