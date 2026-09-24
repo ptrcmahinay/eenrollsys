@@ -102,84 +102,58 @@ function render_staff_edit_form(array $departments, array $roles, array $staff =
 function render_student_form(array $programs, array $sections = [], string $generatedNumber = ''): string
 {
     ob_start(); ?>
-    <form method="post" action="<?= h(app_url('admin/student_create.php')) ?>">
-        <div class="form-grid">
-            <div>
-                <label>Student Number</label>
-                <input type="text" name="student_number" value="<?= h($generatedNumber) ?>" required>
+    <form method="post" action="<?= h(app_url('admin/student_create.php')) ?>" style="max-height:70vh;overflow-y:auto;">
+        <div style="margin-bottom:12px;">
+            <div style="font-weight:700;color:var(--primary,#3b82f6);font-size:13px;margin-bottom:6px;border-bottom:1px solid var(--line,#e5e7eb);padding-bottom:4px;">Student Information</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:13px;">
+                <div><label style="font-weight:600;display:block;">Student Number *</label><input type="text" name="student_number" value="<?= h($generatedNumber) ?>" style="width:100%;" required></div>
+                <div><label style="font-weight:600;display:block;">First Name *</label><input type="text" name="first_name" style="width:100%;" required></div>
+                <div><label style="font-weight:600;display:block;">Middle Name</label><input type="text" name="middle_name" style="width:100%;"></div>
             </div>
-            <div>
-                <label>First Name</label>
-                <input type="text" name="first_name" required>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:13px;margin-top:8px;">
+                <div><label style="font-weight:600;display:block;">Last Name *</label><input type="text" name="last_name" style="width:100%;" required></div>
+                <div><label style="font-weight:600;display:block;">Sex</label><select name="sex" style="width:100%;"><option value="">—</option><option value="Male">Male</option><option value="Female">Female</option></select></div>
+                <div><label style="font-weight:600;display:block;">Date of Birth</label><input type="date" name="birth_date" style="width:100%;"></div>
             </div>
-            <div>
-                <label>Middle Name</label>
-                <input type="text" name="middle_name">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:13px;margin-top:8px;">
+                <div><label style="font-weight:600;display:block;">Contact Number</label><input type="text" name="contact_number" style="width:100%;"></div>
+                <div><label style="font-weight:600;display:block;">Email</label><input type="email" name="email_address" style="width:100%;"></div>
+                <div><label style="font-weight:600;display:block;">Civil Status</label><select name="civil_status" style="width:100%;"><option value="">—</option><option value="Single">Single</option><option value="Married">Married</option><option value="Widowed">Widowed</option><option value="Separated">Separated</option></select></div>
             </div>
-            <div>
-                <label>Last Name</label>
-                <input type="text" name="last_name" required>
-            </div>
-            <div>
-                <label>Address</label>
-                <input type="text" name="address" required>
-            </div>
-            <div>
-                <label>Program</label>
-                <select name="program_id" required>
-                    <?php foreach ($programs as $p): ?>
-                        <option value="<?= h($p['programs_id']) ?>"><?= h($p['program_code'] . ' - ' . ($p['program_name'] ?? '')) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <div>
-                <label>Year Level</label>
-                <select name="year_level" required>
-                    <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
-                </select>
-            </div>
-            <div>
-                <label>Section</label>
-                <select name="section_id">
-                    <option value="">None</option>
-                    <?php foreach ($sections as $sec): ?>
-                        <option value="<?= h($sec['id']) ?>"><?= h($sec['label']) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <div>
-                <label>Entry Year</label>
-                <input type="number" name="entry_year" value="<?= h((string) date('Y')) ?>" required>
-            </div>
-            <div>
-                <label>RA 10931 Override</label>
-                <select name="ra10931_override">
-                    <option value="auto">Auto</option>
-                    <option value="free">Force Free</option>
-                    <option value="extension_tuition">Force Extension Tuition</option>
-                    <option value="tuition">Force Tuition</option>
-                </select>
+            <div style="font-size:13px;margin-top:8px;"><label style="font-weight:600;display:block;">Address</label><input type="text" name="address" style="width:100%;" required></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:13px;margin-top:8px;">
+                <div><label style="font-weight:600;display:block;">Barangay</label><input type="text" name="barangay" style="width:100%;"></div>
+                <div><label style="font-weight:600;display:block;">Municipality</label><input type="text" name="municipality" style="width:100%;"></div>
+                <div><label style="font-weight:600;display:block;">Province</label><input type="text" name="province" style="width:100%;"></div>
             </div>
         </div>
-        <hr class="soft">
-        <p style="font-weight:600;margin-bottom:8px;">Optional portal account</p>
-        <div class="form-grid">
-            <div>
-                <label>Username</label>
-                <input type="text" name="username" placeholder="optional">
+
+        <div style="margin-bottom:12px;">
+            <div style="font-weight:700;color:var(--primary,#3b82f6);font-size:13px;margin-bottom:6px;border-bottom:1px solid var(--line,#e5e7eb);padding-bottom:4px;">Academic Information</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:13px;">
+                <div><label style="font-weight:600;display:block;">Program *</label><select name="program_id" style="width:100%;" required><?php foreach ($programs as $p): ?><option value="<?= h($p['programs_id']) ?>"><?= h($p['program_code'] . ' - ' . ($p['program_name'] ?? '')) ?></option><?php endforeach; ?></select></div>
+                <div><label style="font-weight:600;display:block;">Year Level</label><select name="year_level" style="width:100%;"><option value="1">1st Year</option><option value="2">2nd Year</option><option value="3">3rd Year</option><option value="4">4th Year</option></select></div>
+                <div><label style="font-weight:600;display:block;">Entry Year *</label><input type="number" name="entry_year" value="<?= h((string) date('Y')) ?>" style="width:100%;" required></div>
             </div>
-            <div>
-                <label>Email</label>
-                <input type="email" name="email" placeholder="optional">
-            </div>
-            <div>
-                <label>Password</label>
-                <input type="password" name="password" placeholder="optional">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:13px;margin-top:8px;">
+                <div><label style="font-weight:600;display:block;">Classification</label><select name="classification" style="width:100%;"><option value="">—</option><option value="New">New</option><option value="Continuing">Continuing</option><option value="Transferee">Transferee</option><option value="Cross Enrollee">Cross Enrollee</option><option value="Shiftee">Shiftee</option><option value="Returnee">Returnee</option></select></div>
+                <div><label style="font-weight:600;display:block;">Academic Standing</label><select name="status" style="width:100%;"><option value="Regular">Regular</option><option value="Irregular">Irregular</option></select></div>
+                <div><label style="font-weight:600;display:block;">RA 10931</label><select name="ra10931_override" style="width:100%;"><option value="auto">Auto</option><option value="free">Force Free</option><option value="extension_tuition">Force Extension Tuition</option><option value="tuition">Force Tuition</option></select></div>
             </div>
         </div>
-        <p class="helper">Leave portal account fields blank if the student will self-register later.</p>
-        <div class="form-actions">
-            <button class="btn">Create Student</button>
+
+        <div style="margin-bottom:12px;">
+            <div style="font-weight:700;color:var(--primary,#3b82f6);font-size:13px;margin-bottom:6px;border-bottom:1px solid var(--line,#e5e7eb);padding-bottom:4px;">Optional Portal Account</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:13px;">
+                <div><label style="font-weight:600;display:block;">Username</label><input type="text" name="username" placeholder="optional" style="width:100%;"></div>
+                <div><label style="font-weight:600;display:block;">Email</label><input type="email" name="email" placeholder="optional" style="width:100%;"></div>
+                <div><label style="font-weight:600;display:block;">Password</label><input type="password" name="password" placeholder="optional" style="width:100%;"></div>
+            </div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:4px;">Leave blank if the student will self-register later.</div>
+        </div>
+
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+            <button class="btn" type="submit">Create Student</button>
         </div>
     </form>
     <?php return ob_get_clean();
