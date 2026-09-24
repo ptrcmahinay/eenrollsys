@@ -172,11 +172,58 @@ if ($action === 'settings' && $action !== 'student') :
     $overrides = get_student_overrides($studentId);
     $pfa = get_previous_financial_assistance($studentId);
     $residency = check_university_residency($studentId, $student);
-    $activeSS = get_active_student_scholarship($studentId, 'RA10931');
-    $termHistory = [];
-    if ($activeSS) {
-        $termHistory = get_student_scholarship_terms((int) $activeSS['id']);
+    $fheScholarship = get_scholarship_program_by_code('RA10931');
+
+    $enrolledTerms = fetch_all(
+        'SELECT DISTINCT er.term_id FROM enrollment_requests er WHERE er.student_id = :sid AND er.workflow_status IN ("approved","finalized")',
+        ['sid' => $studentId]
+    );
+    $enrolledTermIds = array_column($enrolledTerms, 'term_id');
+
+    $loaTerms = fetch_all(
+        'SELECT DISTINCT loa.semester, loa.academic_year FROM leave_of_absence loa WHERE loa.student_id = :sid AND loa.status IN ("active","extended","returned")',
+        ['sid' => $studentId]
+    );
+    $loaSemesters = [];
+    foreach ($loaTerms as $lt) {
+        $loaSemesters[($lt['academic_year'] ?? '') . '-' . ($lt['semester'] ?? '')] = true;
     }
+
+    $allTerms = fetch_all(
+        'SELECT at2.id AS term_id, at2.semester, ay.start_year, ay.end_year
+         FROM academic_terms at2 INNER JOIN academic_years ay ON ay.id = at2.academic_year_id
+         WHERE at2.status IN ("active","closed")
+         ORDER BY ay.start_year ASC, FIELD(at2.semester, "1", "2", "mid")'
+    );
+
+    $combinedHistory = [];
+    foreach ($pfa as $p) {
+        if ((int) ($p['government_funded'] ?? 0) && (int) ($p['fhe_verified'] ?? 0) && (int) ($p['previous_fhe_semesters'] ?? 0) > 0) {
+            for ($i = 0; $i < (int) $p['previous_fhe_semesters']; $i++) {
+                $combinedHistory[] = [
+                    'start_year' => '', 'end_year' => '', 'semester' => '',
+                    'status' => 'PREVIOUS_SUC', 'source' => $p['previous_hei'] ?? 'Previous HEI',
+                    'counted' => true, 'sort_key' => '0-' . str_pad((string) $i, 3, '0', STR_PAD_LEFT),
+                ];
+            }
+        }
+    }
+    foreach ($allTerms as $t) {
+        $tid = (int) $t['term_id'];
+        $isEnrolled = in_array($tid, $enrolledTermIds);
+        $isLoa = isset($loaSemesters[($t['start_year'] ?? '') . '-' . ($t['semester'] ?? '')])
+              || isset($loaSemesters[($t['end_year'] ?? '') . '-' . ($t['semester'] ?? '')]);
+        $termStatus = $isEnrolled ? 'ENROLLED' : ($isLoa ? 'LOA' : 'NOT_ENROLLED');
+        $rule = $fheScholarship ? get_consumption_rule((int) $fheScholarship['id'], $termStatus) : null;
+        $action = $rule ? $rule['action'] : ($termStatus === 'LOA' ? 'EXCLUDE' : 'COUNT');
+        $counts = ($action === 'COUNT');
+        $combinedHistory[] = [
+            'start_year' => $t['start_year'], 'end_year' => $t['end_year'], 'semester' => $t['semester'],
+            'status' => $termStatus, 'source' => 'CvSU', 'counted' => $counts,
+            'sort_key' => ($t['start_year'] ?? '9999') . '-' . ($t['semester'] === '2' ? '5' : ($t['semester'] === 'mid' ? '3' : '1')),
+        ];
+    }
+    usort($combinedHistory, fn($a, $b) => strcmp($a['sort_key'], $b['sort_key']));
 ?>
 <div class="page-header">
     <div>
@@ -257,37 +304,6 @@ if ($action === 'settings' && $action !== 'student') :
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
     <div class="card">
         <h3>FHE Term History</h3>
-        <?php
-        $combinedHistory = [];
-        foreach ($pfa as $p) {
-            if ((int) ($p['government_funded'] ?? 0) && (int) ($p['fhe_verified'] ?? 0) && (int) ($p['previous_fhe_semesters'] ?? 0) > 0) {
-                for ($i = 0; $i < (int) $p['previous_fhe_semesters']; $i++) {
-                    $combinedHistory[] = [
-                        'start_year' => '',
-                        'end_year'   => '',
-                        'semester'   => '',
-                        'status'     => 'PREVIOUS_SUC',
-                        'source'     => $p['previous_hei'] ?? 'Previous HEI',
-                        'counted'    => true,
-                        'sort_key'   => '0-' . str_pad((string) $i, 3, '0', STR_PAD_LEFT),
-                    ];
-                }
-            }
-        }
-        foreach ($termHistory as $th) {
-            $ay = fetch_one('SELECT ay.start_year, ay.end_year FROM academic_terms at2 INNER JOIN academic_years ay ON ay.id = at2.academic_year_id WHERE at2.id = :tid', ['tid' => (int) $th['term_id']]);
-            $combinedHistory[] = [
-                'start_year' => $ay['start_year'] ?? '',
-                'end_year'   => $ay['end_year'] ?? '',
-                'semester'   => $th['semester'] ?? '',
-                'status'     => $th['status'],
-                'source'     => 'CvSU',
-                'counted'    => (bool) $th['consumes_scholarship'],
-                'sort_key'   => ($ay['start_year'] ?? '9999') . '-' . ($th['semester'] === '2' ? '5' : ($th['semester'] === 'mid' ? '3' : '1')),
-            ];
-        }
-        usort($combinedHistory, fn($a, $b) => strcmp($a['sort_key'], $b['sort_key']));
-        ?>
         <?php if (empty($combinedHistory)): ?>
             <p style="color:var(--muted);font-size:13px;">No FHE monitoring records yet.</p>
         <?php else: ?>
@@ -308,7 +324,7 @@ if ($action === 'settings' && $action !== 'student') :
                             <?php elseif ($ch['status'] === 'LOA'): ?>
                                 <span class="badge danger">LOA</span>
                             <?php else: ?>
-                                <span class="badge info"><?= h($ch['status']) ?></span>
+                                <span class="badge info">Not Enrolled</span>
                             <?php endif; ?>
                         </td>
                         <td><?= $ch['counted'] ? 'YES' : 'NO' ?></td>

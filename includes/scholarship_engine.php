@@ -471,27 +471,77 @@ function check_fhe_eligibility(int $studentId, ?array $student = null, ?array $t
     $classification = (string) ($student['classification'] ?? 'New');
     $programId = (int) $student['program_id'];
     $yearLevel = (int) $student['year_level'];
-    $academicStatus = (string) ($student['academic_status'] ?? 'active');
 
     $allowedSemesters = (int) $fheSettings['max_allowed_semesters'];
-    $prescribedYears = get_program_duration($programId);
-    $prescribedTerms = $prescribedYears * 2;
 
-    $activeSS = get_active_student_scholarship($studentId, 'RA10931');
-    $internalConsumed = 0;
+    $enrolledTerms = fetch_all(
+        'SELECT DISTINCT er.term_id
+         FROM enrollment_requests er
+         WHERE er.student_id = :sid AND er.workflow_status IN ("approved", "finalized")',
+        ['sid' => $studentId]
+    );
+    $enrolledTermIds = array_column($enrolledTerms, 'term_id');
+
+    $loaTerms = fetch_all(
+        'SELECT DISTINCT loa.student_id, loa.semester, loa.academic_year
+         FROM leave_of_absence loa
+         WHERE loa.student_id = :sid AND loa.status IN ("active", "extended", "returned")',
+        ['sid' => $studentId]
+    );
+    $loaSemesters = [];
+    foreach ($loaTerms as $lt) {
+        $key = ($lt['academic_year'] ?? '') . '-' . ($lt['semester'] ?? '');
+        $loaSemesters[$key] = true;
+    }
+
+    $allTerms = fetch_all(
+        'SELECT at2.id AS term_id, at2.semester, ay.start_year, ay.end_year, ay.year_label
+         FROM academic_terms at2
+         INNER JOIN academic_years ay ON ay.id = at2.academic_year_id
+         WHERE at2.status IN ("active", "closed")
+         ORDER BY ay.start_year ASC, FIELD(at2.semester, "1", "2", "mid")'
+    );
+
+    $cvsuConsumed = 0;
     $loaExcluded = 0;
+    $notEnrolledCount = 0;
+    $enrolledCount = 0;
     $termHistory = [];
 
-    if ($activeSS) {
-        $terms = get_student_scholarship_terms((int) $activeSS['id']);
-        foreach ($terms as $t) {
-            $termHistory[] = $t;
-            if ($t['consumes_scholarship']) {
-                $internalConsumed++;
-            }
-            if ($t['status'] === 'LOA') {
-                $loaExcluded++;
-            }
+    foreach ($allTerms as $t) {
+        $tid = (int) $t['term_id'];
+        $aySemKey = ($t['start_year'] ?? '') . '-' . ($t['end_year'] ?? '') . '-' . ($t['semester'] ?? '');
+        $isEnrolled = in_array($tid, $enrolledTermIds);
+        $isLoa = isset($loaSemesters[($t['start_year'] ?? '') . '-' . ($t['semester'] ?? '')])
+              || isset($loaSemesters[($t['end_year'] ?? '') . '-' . ($t['semester'] ?? '')])
+              || isset($loaSemesters[($t['start_year'] ?? '') . '-']);
+
+        $termStatus = $isEnrolled ? 'ENROLLED' : ($isLoa ? 'LOA' : 'NOT_ENROLLED');
+
+        $rule = get_consumption_rule((int) $scholarship['id'], $termStatus);
+        $action = $rule ? $rule['action'] : ($termStatus === 'LOA' ? 'EXCLUDE' : 'COUNT');
+        $counts = ($action === 'COUNT');
+
+        $termHistory[] = [
+            'start_year' => $t['start_year'],
+            'end_year'   => $t['end_year'],
+            'semester'   => $t['semester'],
+            'status'     => $termStatus,
+            'counted'    => $counts,
+            'source'     => 'CvSU',
+            'sort_key'   => ($t['start_year'] ?? '9999') . '-' . ($t['semester'] === '2' ? '5' : ($t['semester'] === 'mid' ? '3' : '1')),
+        ];
+
+        if ($counts) {
+            $cvsuConsumed++;
+        }
+        if ($termStatus === 'LOA') {
+            $loaExcluded++;
+        }
+        if ($isEnrolled) {
+            $enrolledCount++;
+        } elseif (!$isLoa) {
+            $notEnrolledCount++;
         }
     }
 
@@ -509,7 +559,7 @@ function check_fhe_eligibility(int $studentId, ?array $student = null, ?array $t
         }
     }
 
-    $totalConsumed = $internalConsumed + $previousFhe;
+    $totalConsumed = $cvsuConsumed + $previousFhe;
     $remaining = $allowedSemesters - $totalConsumed;
 
     $notes = [];
@@ -517,16 +567,13 @@ function check_fhe_eligibility(int $studentId, ?array $student = null, ?array $t
     if ($previousFhe > 0) {
         $notes[] = 'Previous HEI (' . h($previousHei) . '): ' . $previousFhe . ' semesters';
     }
-    if ($internalConsumed > 0) {
-        $notes[] = 'CvSU FHE consumed: ' . $internalConsumed . ' semesters';
-    }
+    $notes[] = 'CvSU enrollment history: ' . $enrolledCount . ' enrolled + ' . $notEnrolledCount . ' not enrolled (no LOA) = ' . $cvsuConsumed . ' semesters counted';
     if ($loaExcluded > 0) {
         $notes[] = 'LOA excluded: ' . $loaExcluded . ' term(s)';
     }
 
     if ($classification === 'Shiftee') {
-        $notes[] = 'Shiftee — previous FHE terms (' . $internalConsumed . ' internal) preserved.';
-        $rules = get_scholarship_rules((int) $scholarship['id']);
+        $notes[] = 'Shiftee — FHE terms preserved through shift.';
         $maxShiftYl = (int) setting('max_shifting_year_level', '2');
         if ($maxShiftYl > 0 && $yearLevel > $maxShiftYl) {
             return ['eligible' => false, 'reason' => 'Shifting only allowed up to Year ' . $maxShiftYl . '.', 'student_type' => $classification];
@@ -555,7 +602,7 @@ function check_fhe_eligibility(int $studentId, ?array $student = null, ?array $t
             'reason'              => 'FHE allowance exhausted (' . $totalConsumed . ' of ' . $allowedSemesters . ' semesters used).',
             'student_type'        => $classification,
             'consumed'            => $totalConsumed,
-            'internal_consumed'   => $internalConsumed,
+            'internal_consumed'   => $cvsuConsumed,
             'previous_fhe'        => $previousFhe,
             'loa_excluded'        => $loaExcluded,
             'allowable'           => $allowedSemesters,
@@ -573,7 +620,7 @@ function check_fhe_eligibility(int $studentId, ?array $student = null, ?array $t
         'reason'              => $hasOverride ? 'FHE exhausted but Registrar override active.' : 'Eligible for FHE',
         'student_type'        => $classification,
         'consumed'            => $totalConsumed,
-        'internal_consumed'   => $internalConsumed,
+        'internal_consumed'   => $cvsuConsumed,
         'previous_fhe'        => $previousFhe,
         'loa_excluded'        => $loaExcluded,
         'allowable'           => $allowedSemesters,
