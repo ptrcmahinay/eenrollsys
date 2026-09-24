@@ -132,6 +132,7 @@ function seed_ra10931_scholarship(): void
 }
 
 $programs = get_all_scholarship_programs();
+$feeItems = fetch_all('SELECT DISTINCT fee_name FROM fee_items WHERE is_active = 1 ORDER BY fee_name');
 $editProgram = null;
 $editRules = null;
 $editBenefits = [];
@@ -263,14 +264,14 @@ ob_start();
     <div id="benefits-container" style="font-size:13px;">
         <?php if (empty($editBenefits)): ?>
         <div class="benefit-row" style="display:grid;grid-template-columns:2fr 1fr 1fr 40px;gap:8px;margin-bottom:6px;">
-            <input type="text" name="benefit_fee_name[]" placeholder="Fee name (e.g. tuition)" style="width:100%;">
+            <select name="benefit_fee_name[]" style="width:100%;"><option value="">— Select Fee —</option><?php foreach ($feeItems as $fi): ?><option value="<?= h($fi['fee_name']) ?>"><?= h($fi['fee_name']) ?></option><?php endforeach; ?></select>
             <select name="benefit_type[]" style="width:100%;"><option value="WAIVE">100% Waive</option><option value="DISCOUNT_PERCENT">% Discount</option><option value="DISCOUNT_FIXED">Fixed Discount</option></select>
             <input type="number" name="benefit_value[]" value="0" step="0.01" style="width:100%;">
             <button type="button" onclick="this.closest('.benefit-row').remove()" style="background:none;border:none;color:#dc2626;cursor:pointer;">✕</button>
         </div>
         <?php else: foreach ($editBenefits as $b): ?>
         <div class="benefit-row" style="display:grid;grid-template-columns:2fr 1fr 1fr 40px;gap:8px;margin-bottom:6px;">
-            <input type="text" name="benefit_fee_name[]" value="<?= h($b['fee_item_name']) ?>" style="width:100%;">
+            <select name="benefit_fee_name[]" style="width:100%;"><option value="">— Select Fee —</option><?php foreach ($feeItems as $fi): ?><option value="<?= h($fi['fee_name']) ?>" <?= $fi['fee_name'] === $b['fee_item_name'] ? 'selected' : '' ?>><?= h($fi['fee_name']) ?></option><?php endforeach; ?></select>
             <select name="benefit_type[]" style="width:100%;">
                 <option value="WAIVE" <?= $b['benefit_type'] === 'WAIVE' ? 'selected' : '' ?>>100% Waive</option>
                 <option value="DISCOUNT_PERCENT" <?= $b['benefit_type'] === 'DISCOUNT_PERCENT' ? 'selected' : '' ?>>% Discount</option>
@@ -342,12 +343,15 @@ ob_start();
 <?php endif; ?>
 
 <script>
+var feeItems = <?= json_encode(array_column($feeItems, 'fee_name')) ?>;
 function addBenefit() {
     const c = document.getElementById('benefits-container');
     const d = document.createElement('div');
     d.className = 'benefit-row';
     d.style.cssText = 'display:grid;grid-template-columns:2fr 1fr 1fr 40px;gap:8px;margin-bottom:6px;';
-    d.innerHTML = '<input type="text" name="benefit_fee_name[]" placeholder="Fee name" style="width:100%;">' +
+    var opts = '<option value="">— Select Fee —</option>';
+    feeItems.forEach(function(f) { opts += '<option value="' + f + '">' + f + '</option>'; });
+    d.innerHTML = '<select name="benefit_fee_name[]" style="width:100%;">' + opts + '</select>' +
         '<select name="benefit_type[]" style="width:100%;"><option value="WAIVE">100% Waive</option><option value="DISCOUNT_PERCENT">% Discount</option><option value="DISCOUNT_FIXED">Fixed Discount</option></select>' +
         '<input type="number" name="benefit_value[]" value="0" step="0.01" style="width:100%;">' +
         '<button type="button" onclick="this.closest(\'.benefit-row\').remove()" style="background:none;border:none;color:#dc2626;cursor:pointer;">✕</button>';
