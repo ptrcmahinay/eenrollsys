@@ -133,8 +133,8 @@ $loaRecords = fetch_all(
 $shiftRequests = fetch_all(
     'SELECT sr.*, p_from.program_name AS from_program_name, p_to.program_name AS to_program_name
      FROM shifting_requests sr
-     LEFT JOIN programs p_from ON p_from.programs_id = sr.from_program_id
-     LEFT JOIN programs p_to ON p_to.programs_id = sr.to_program_id
+     LEFT JOIN programs p_from ON p_from.programs_id = sr.current_program_id
+     LEFT JOIN programs p_to ON p_to.programs_id = sr.target_program_id
      WHERE sr.student_id = :sid ORDER BY sr.created_at DESC',
     ['sid' => $studentId]
 );
@@ -376,8 +376,8 @@ ob_start();
         <tbody><?php foreach ($shiftRequests as $sr): ?>
         <tr>
             <td style="font-size:12px;"><?= h(date('M j, Y', strtotime($sr['created_at']))) ?></td>
-            <td><?= h($sr['from_program_name'] ?? $sr['from_program_id']) ?></td>
-            <td><?= h($sr['to_program_name'] ?? $sr['to_program_id']) ?></td>
+            <td><?= h($sr['from_program_name'] ?? $sr['current_program_id']) ?></td>
+            <td><?= h($sr['to_program_name'] ?? $sr['target_program_id']) ?></td>
             <td><span class="badge info" style="font-size:10px;"><?= h(ucfirst(str_replace('_', ' ', $sr['workflow_status'] ?? '—'))) ?></span></td>
         </tr>
         <?php endforeach; ?></tbody>
