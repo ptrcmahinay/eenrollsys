@@ -11,8 +11,6 @@ if ($q === '') {
     exit;
 }
 
-$like = '%' . $q . '%';
-
 $students = fetch_all(
     'SELECT s.id, s.student_number,
             CONCAT(s.first_name, " ", IFNULL(s.middle_name, ""), " ", s.last_name) AS full_name,
@@ -21,10 +19,11 @@ $students = fetch_all(
      FROM students s
      INNER JOIN programs p ON p.programs_id = s.program_id
      LEFT JOIN departments d ON d.dept_id = p.department_id
-     WHERE s.student_number LIKE :q1 OR s.first_name LIKE :q2 OR s.last_name LIKE :q3
+     WHERE s.student_number LIKE :q1
+        OR CONCAT(s.first_name, " ", IFNULL(s.middle_name, ""), " ", s.last_name) LIKE :q2
      ORDER BY s.student_number ASC
-     LIMIT 20',
-    ['q1' => $like, 'q2' => $like, 'q3' => $like]
+     LIMIT 15',
+    ['q1' => '%' . $q . '%', 'q2' => '%' . $q . '%']
 );
 
 $results = [];
