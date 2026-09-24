@@ -212,7 +212,7 @@ ob_start();
     <form method="get" style="display:flex;gap:8px;margin-bottom:12px;">
         <input type="hidden" name="view" value="<?= $viewId ?>">
         <select name="mon_ay" style="font-size:12px;">
-            <?php for ($y = (int) date('Y'); $y >= (int) date('Y') - 2; $y++): ?>
+            <?php for ($y = (int) date('Y'); $y >= (int) date('Y') - 2; $y--): ?>
             <option value="<?= $y ?>-<?= $y + 1 ?>" <?= $currentAY === "$y-" . ($y + 1) ? 'selected' : '' ?>><?= $y ?>-<?= $y + 1 ?></option>
             <?php endfor; ?>
         </select>
