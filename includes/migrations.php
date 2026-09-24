@@ -954,6 +954,10 @@ function ensure_composite_indexes(): void
             if (!$stmt || !$stmt->fetch()) {
                 try {
                     $pdo->exec("ALTER TABLE `{$table}` ADD INDEX `{$idx['name']}` {$idx['cols']}");
+                } catch (\Throwable $e) {
+                }
+            }
+        }
     } catch (\Throwable $e) {
     }
 }
@@ -1067,10 +1071,6 @@ function ensure_student_status_column(): void
         $stmt = $pdo->query("SHOW COLUMNS FROM `students` LIKE 'academic_status'");
         if (!$stmt || !$stmt->fetch()) {
             $pdo->exec("ALTER TABLE `students` ADD COLUMN `academic_status` ENUM('active','on_leave','graduated','transferred','withdrawn') NOT NULL DEFAULT 'active' AFTER `shifting_request_id`");
-        }
-    } catch (\Throwable $e) {
-    }
-}
         }
     } catch (\Throwable $e) {
     }
