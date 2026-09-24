@@ -70,6 +70,7 @@ function db(): PDO
         ensure_grades_term_id_column();
         ensure_offering_term_protection();
         ensure_student_subjects_grades_locked_column();
+        ensure_scholarship_tables();
     }
     return $pdo;
 }

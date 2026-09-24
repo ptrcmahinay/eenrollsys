@@ -59,6 +59,7 @@ function create_loa_record(
     $currentTerm = current_term();
     if ($currentTerm) {
         set_student_term_status($studentId, (int) $currentTerm['id'], 'on_leave', $encodedBy);
+        pause_scholarship_for_loa($studentId, (int) $currentTerm['id']);
     }
 
     execute_sql(
@@ -116,6 +117,7 @@ function mark_loa_returned(int $loaId, int $userId): void
         $currentTerm = current_term();
         if ($currentTerm) {
             set_student_term_status((int) $loa['student_id'], (int) $currentTerm['id'], 'active', $userId);
+            resume_scholarship_from_loa((int) $loa['student_id'], (int) $currentTerm['id']);
         }
 
         db()->commit();

@@ -89,6 +89,7 @@ switch ($role) {
             ['label' => 'Academic Honors', 'path' => 'registrar/academic_honors.php',  'icon' => 'emoji_events'],
             ['type' => 'header', 'label' => 'Finance'],
             ['label' => 'Fee Management', 'path' => 'admin/fees.php', 'icon' => 'receipt_long'],
+            ['label' => 'Scholarships', 'path' => 'registrar/scholarships.php', 'icon' => 'school'],
         ];
         break;
 

@@ -23,15 +23,13 @@ function compute_enrollment_fees(
     $student = fetch_one('SELECT * FROM students WHERE id = :id', ['id' => $studentId])
         ?? ['entry_year' => date('Y'), 'ra10931_override' => 'auto', 'program_id' => 0, 'year_level' => 1];
 
-    $financial = financial_profile($student);
-    $programId = (int) $student['program_id'];
-    $yearLevel = (int) $student['year_level'];
-
     $term = fetch_one(
         'SELECT t.*, ay.year_label FROM academic_terms t INNER JOIN academic_years ay ON ay.id = t.academic_year_id WHERE t.id = :tid',
         ['tid' => $termId]
     );
     $semester = $term ? (string) $term['semester'] : '1';
+    $programId = (int) $student['program_id'];
+    $yearLevel = (int) $student['year_level'];
 
     // Compute totals from selected offerings
     $totalUnits = 0.0;
@@ -51,7 +49,7 @@ function compute_enrollment_fees(
         $labCredits = (float) ($row['lab_credits'] ?? 0);
     }
 
-    // Load all matching fee items (ordered so tuition appears first in assessment)
+    // Load all matching fee items
     $feeItems = fetch_all(
         'SELECT id, category, fee_name, amount, calculation_type, is_mandatory
          FROM fee_items
@@ -111,19 +109,23 @@ function compute_enrollment_fees(
         ];
     }
 
-    // Apply RA 10931 adjustment if student qualifies
-    if ($financial['status'] === 'free') {
-        $tuitionGross = 0.0;
-        foreach ($assessments as &$a) {
-            if (strcasecmp($a['fee_name'], 'tuition') === 0 && $a['category'] === 'assessment') {
-                $tuitionGross = $a['gross_amount'];
-                $a['discount_amount'] = $tuitionGross;
-                $a['net_amount'] = 0.0;
-                $a['notes'] = ($a['quantity'] ?? 0) . ' units × ' . format_money($a['rate']) . '/unit — RA 10931 (Free Education)';
-                break;
+    // Apply scholarship adjustments from scholarship engine
+    $adjustments = calculate_scholarship_adjustments($studentId, $assessments, $term);
+
+    // Legacy fallback: if no scholarship engine adjustments, check ra10931_override directly
+    if (empty($adjustments)) {
+        $override = (string) ($student['ra10931_override'] ?? 'auto');
+        if ($override === 'free') {
+            foreach ($assessments as &$a) {
+                if (strcasecmp($a['fee_name'], 'tuition') === 0 && $a['category'] === 'assessment') {
+                    $a['discount_amount'] = $a['gross_amount'];
+                    $a['net_amount'] = 0.0;
+                    $a['notes'] = ($a['quantity'] ?? 0) . ' units × ' . format_money($a['rate']) . '/unit — RA 10931 (Free Education)';
+                    break;
+                }
             }
+            unset($a);
         }
-        unset($a);
     }
 
     return $assessments;
