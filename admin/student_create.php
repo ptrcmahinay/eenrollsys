@@ -95,26 +95,5 @@ if ($guardianName !== '') {
     );
 }
 
-$username = trim($_POST['username'] ?? '');
-$email = trim($_POST['email'] ?? '');
-$password = (string) ($_POST['password'] ?? '');
-if ($username !== '' && $email !== '' && $password !== '') {
-    execute_sql(
-        'INSERT INTO users (username, email, password, student_id, created_at) VALUES (:username, :email, :password, :student_id, NOW())',
-        [
-            'username'   => $username,
-            'email'      => $email,
-            'password'   => password_hash($password, PASSWORD_DEFAULT),
-            'student_id' => $studentId,
-        ]
-    );
-    $userId = (int) db()->lastInsertId();
-    $studentRole = fetch_one('SELECT roles_id FROM roles WHERE role_name = "student" LIMIT 1');
-    execute_sql('INSERT INTO user_roles (user_id, role_id) VALUES (:user_id, :role_id)', [
-        'user_id' => $userId,
-        'role_id' => (int) ($studentRole['roles_id'] ?? 1),
-    ]);
-}
-
 flash('success', 'Student profile created successfully. Student #' . $data['student_number']);
 redirect('admin/students.php');

@@ -155,16 +155,6 @@ function render_student_form(array $programs, array $sections = [], string $gene
         </div>
 
         <div style="margin-bottom:12px;">
-            <div style="font-weight:700;color:var(--primary,#3b82f6);font-size:13px;margin-bottom:6px;border-bottom:1px solid var(--line,#e5e7eb);padding-bottom:4px;">Optional Portal Account</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:13px;">
-                <div><label style="font-weight:600;display:block;">Username</label><input type="text" name="username" placeholder="optional" style="width:100%;"></div>
-                <div><label style="font-weight:600;display:block;">Email</label><input type="email" name="email" placeholder="optional" style="width:100%;"></div>
-                <div><label style="font-weight:600;display:block;">Password</label><input type="password" name="password" placeholder="optional" style="width:100%;"></div>
-            </div>
-            <div style="font-size:11px;color:#94a3b8;margin-top:4px;">Leave blank if the student will self-register later.</div>
-        </div>
-
-        <div style="margin-bottom:12px;">
             <div style="font-weight:700;color:var(--primary,#3b82f6);font-size:13px;margin-bottom:6px;border-bottom:1px solid var(--line,#e5e7eb);padding-bottom:4px;">Educational Background</div>
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:13px;">
                 <div><label style="font-weight:600;display:block;">Elementary School</label><input type="text" name="elementary_school" style="width:100%;"></div>

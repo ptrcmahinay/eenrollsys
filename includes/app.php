@@ -63,6 +63,7 @@ function db(): PDO
         ensure_student_term_status_table();
         ensure_student_status_column();
         ensure_student_extended_fields();
+        ensure_drop_student_address_components();
         ensure_student_educational_background_table();
         ensure_student_guardians_table();
         ensure_grading_engine_tables();

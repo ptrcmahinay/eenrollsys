@@ -977,9 +977,6 @@ function ensure_student_extended_fields(): void
             'religion'           => "ADD COLUMN `religion` VARCHAR(100) NULL",
             'nationality'        => "ADD COLUMN `nationality` VARCHAR(100) NULL DEFAULT 'Filipino'",
             'civil_status'       => "ADD COLUMN `civil_status` ENUM('Single','Married','Widowed','Separated','Divorced') NULL DEFAULT 'Single'",
-            'barangay'           => "ADD COLUMN `barangay` VARCHAR(150) NULL",
-            'municipality'       => "ADD COLUMN `municipality` VARCHAR(150) NULL",
-            'province'           => "ADD COLUMN `province` VARCHAR(150) NULL",
             'landline_no'        => "ADD COLUMN `landline_no` VARCHAR(20) NULL",
             'photo_path'         => "ADD COLUMN `photo_path` VARCHAR(255) NULL",
             'place_of_birth'     => "ADD COLUMN `place_of_birth` VARCHAR(255) NULL",
@@ -1936,12 +1933,42 @@ function ensure_grading_engine_tables(): void
                         LEFT JOIN `section_subject_offerings` o ON o.id = g.offering_id
                         WHERE g.grade IS NOT NULL AND g.grade != ''
                     ");
-                } catch (\Throwable $e) {
-                    // Ignore migration errors
+        } catch (\Throwable $e) {
+                // Ignore migration errors
                 }
             }
         }
 
+    } catch (\Throwable $e) {
+    }
+}
+
+function ensure_drop_student_address_components(): void
+{
+    static $done = false;
+    if ($done) return;
+    $done = true;
+
+    try {
+        global $pdo;
+        if (!($pdo instanceof PDO)) return;
+
+        $cols = [];
+        $stmt = $pdo->query("SHOW COLUMNS FROM `students`");
+        if ($stmt) {
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $cols[] = $row['Field'];
+            }
+        }
+
+        foreach (['barangay', 'municipality', 'province'] as $col) {
+            if (in_array($col, $cols, true)) {
+                try {
+                    $pdo->exec("ALTER TABLE `students` DROP COLUMN `{$col}`");
+                } catch (\Throwable $e) {
+                }
+            }
+        }
     } catch (\Throwable $e) {
     }
 }
