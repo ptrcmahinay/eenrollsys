@@ -371,7 +371,7 @@ function has_active_enrollment_override(int $studentId, string $type): bool
 {
     $row = fetch_one(
         'SELECT id FROM enrollment_overrides WHERE student_id = :sid AND override_type = :type AND status = "ACTIVE"
-         AND (approved_until_term_id IS NULL OR approved_until_term_id >= (SELECT id FROM academic_terms WHERE is_current = 1 LIMIT 1)) LIMIT 1',
+         AND (approved_until_term_id IS NULL OR approved_until_term_id >= (SELECT id FROM academic_terms WHERE is_active = 1 LIMIT 1)) LIMIT 1',
         ['sid' => $studentId, 'type' => $type]
     );
     return $row !== null;
