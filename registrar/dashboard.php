@@ -7,7 +7,7 @@ require_role('registrar');
 $term = current_term();
 $counts = [
     'Students' => fetch_one('SELECT COUNT(*) AS total FROM students')['total'] ?? 0,
-    'Under RA 10931' => fetch_one('SELECT COUNT(*) AS total FROM students WHERE COALESCE(ra10931_override, "auto") IN ("auto", "free") AND entry_year >= :min_year', ['min_year' => (int) date('Y') - 3])['total'] ?? 0,
+    'Under RA 10931' => fetch_one('SELECT COUNT(*) AS total FROM student_scholarships ss INNER JOIN scholarship_programs sp ON sp.id = ss.scholarship_id WHERE sp.code = "RA10931" AND ss.status = "ACTIVE"')['total'] ?? 0,
     'Pending Approval' => fetch_one('SELECT COUNT(*) AS total FROM enrollment_requests WHERE workflow_status = "chair_approved"')['total'] ?? 0,
     'Enrolled This Term' => fetch_one('SELECT COUNT(DISTINCT student_id) AS total FROM student_subjects WHERE term_id = :term_id', ['term_id' => (int) ($term['id'] ?? 0)])['total'] ?? 0,
 ];

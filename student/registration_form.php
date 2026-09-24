@@ -250,7 +250,12 @@ $totalDue = $tuitionOnly + $labFee + $otherFees + $feeItemsTotal;
                 <span>Scholarship</span>
             </div>
             <div class="fee-item">
-                <span><?= h($financial['status'] === 'free' ? 'RA 10931 (Free Education)' : 'N/A') ?></span>
+                <?php $fheElig = $financial['fhe_eligibility'] ?? null; ?>
+                <?php if ($fheElig && $fheElig['eligible']): ?>
+                    <span style="color:#16a34a;font-weight:600;">&#10003; RA 10931 — Eligible (<?= (int) ($fheElig['remaining'] ?? 0) ?> sem remaining)</span>
+                <?php else: ?>
+                    <span style="color:#dc2626;">&#10007; <?= h($fheElig['reason'] ?? 'N/A') ?></span>
+                <?php endif; ?>
                 <span class="fee-amount">&#8369;0.00</span>
             </div>
             <div style="border-top: 1px solid #16a34a; padding-top: 8px; margin-top: 5px;">

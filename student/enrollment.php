@@ -687,9 +687,33 @@ ob_start();
                         <div style="font-size:10px;font-weight:600;color:#15803d;text-transform:uppercase;letter-spacing:0.4px;">Status</div>
                         <div style="font-size:13px;font-weight:600;color:#1e293b;" id="reviewStatus"></div>
                     </div>
-                    <div>
-                        <div style="font-size:10px;font-weight:600;color:#15803d;text-transform:uppercase;letter-spacing:0.4px;">Financial Status</div>
-                        <div style="font-size:13px;font-weight:600;color:#1e293b;"><?= h($financial['label']) ?></div>
+                    <?php $fheElig = $financial['fhe_eligibility'] ?? null; ?>
+                    <div style="grid-column:span 2;">
+                        <div style="font-size:10px;font-weight:600;color:#15803d;text-transform:uppercase;letter-spacing:0.4px;">RA 10931 / Free Higher Education</div>
+                        <?php if ($fheElig && $fheElig['eligible']): ?>
+                        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:8px 12px;margin-top:4px;">
+                            <div style="font-size:13px;font-weight:600;color:#16a34a;">&#10003; Eligible</div>
+                            <div style="font-size:11px;color:#64748b;margin-top:4px;">
+                                Allowed: <?= (int) ($fheElig['allowable'] ?? 0) ?> semesters
+                                &middot; Consumed: <?= (int) ($fheElig['consumed'] ?? 0) ?>
+                                &middot; Remaining: <strong style="color:#16a34a;"><?= (int) ($fheElig['remaining'] ?? 0) ?></strong>
+                            </div>
+                            <?php if (!empty($fheElig['previous_hei'])): ?>
+                            <div style="font-size:11px;color:#64748b;">Previous HEI: <?= h($fheElig['previous_hei']) ?> (<?= (int) ($fheElig['previous_fhe'] ?? 0) ?> semesters)</div>
+                            <?php endif; ?>
+                            <?php if (($fheElig['loa_excluded'] ?? 0) > 0): ?>
+                            <div style="font-size:11px;color:#64748b;">LOA excluded: <?= (int) $fheElig['loa_excluded'] ?> term(s)</div>
+                            <?php endif; ?>
+                        </div>
+                        <?php else: ?>
+                        <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:8px 12px;margin-top:4px;">
+                            <div style="font-size:13px;font-weight:600;color:#dc2626;">&#10007; Not Eligible</div>
+                            <div style="font-size:11px;color:#64748b;margin-top:4px;"><?= h($fheElig['reason'] ?? 'FHE not available') ?></div>
+                            <?php if ($fheElig): ?>
+                            <div style="font-size:11px;color:#64748b;">Allowed: <?= (int) ($fheElig['allowable'] ?? 0) ?> &middot; Consumed: <?= (int) ($fheElig['consumed'] ?? 0) ?> &middot; Remaining: <?= (int) ($fheElig['remaining'] ?? 0) ?></div>
+                            <?php endif; ?>
+                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>

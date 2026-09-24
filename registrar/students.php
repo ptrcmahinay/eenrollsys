@@ -289,8 +289,9 @@ $addStudentModal = '
                         <td><?= h($row['year_level'] . ($row['section_name'] ?: '')) ?></td>
                         <td><?= h($row['address']) ?></td>
                         <td data-dt-value="<?= h($financial['label']) ?>">
-                            <span class="badge <?= in_array($financial['status'], ['free'], true) ? 'success' : 'warning' ?>">
-                                <?= h($financial['label']) ?>
+                            <?php $fheE = $financial['fhe_eligibility'] ?? null; ?>
+                            <span class="badge <?= ($fheE && $fheE['eligible']) ? 'success' : 'warning' ?>">
+                                <?= ($fheE && $fheE['eligible']) ? 'FHE Eligible (' . (int) ($fheE['remaining'] ?? 0) . ' sem left)' : h($financial['label']) ?>
                             </span>
                         </td>
                         <td>

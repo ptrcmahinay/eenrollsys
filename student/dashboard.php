@@ -180,7 +180,15 @@ ob_start();
     <div class="card slim"><div class="metric-label">Student Number</div><div class="metric" style="font-size:22px;"><?= h($student['student_number']) ?></div></div>
     <div class="card slim"><div class="metric-label">Program</div><div class="metric" style="font-size:22px;"><?= h($student['program_code']) ?></div></div>
     <div class="card slim"><div class="metric-label">Year / Standing</div><div class="metric" style="font-size:22px;"><?= (int) $targets['year_level'] ?><?= match((int) $targets['year_level']) { 1 => 'st', 2 => 'nd', 3 => 'rd', default => 'th' } ?> Year<?= $targets['standing'] != $targets['year_level'] ? ' / ' . $targets['standing'] . match((int) $targets['standing']) { 1 => 'st', 2 => 'nd', 3 => 'rd', default => 'th' } . ' Standing' : '' ?></div></div>
-    <div class="card slim"><div class="metric-label">RA / Tuition</div><div class="metric" style="font-size:18px;"><?= h($financial['label']) ?></div></div>
+    <div class="card slim">
+        <div class="metric-label">RA 10931 / FHE</div>
+        <?php $fheElig = $financial['fhe_eligibility'] ?? null; ?>
+        <?php if ($fheElig && $fheElig['eligible']): ?>
+            <div class="metric" style="font-size:16px;color:#16a34a;">&#10003; Eligible (<?= (int) ($fheElig['remaining'] ?? 0) ?> sem left)</div>
+        <?php else: ?>
+            <div class="metric" style="font-size:16px;color:#dc2626;">&#10007; <?= h($fheElig['reason'] ?? 'Not eligible') ?></div>
+        <?php endif; ?>
+    </div>
 </div>
 <div class="grid cols-2" style="margin-top:16px;">
     <div class="card">
