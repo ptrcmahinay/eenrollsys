@@ -320,17 +320,16 @@ ob_start();
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="add_loa">
 
-        <div style="margin-bottom:12px;">
-            <label style="font-weight:600;font-size:13px;">Student No. *</label>
-            <div style="display:flex;gap:8px;">
-                <input type="text" id="loa_student_no" name="student_no" style="flex:1;" placeholder="Search student number..." required>
-                <button type="button" class="btn" onclick="searchStudent()">Search</button>
-            </div>
+        <div style="margin-bottom:12px;position:relative;">
+            <label style="font-weight:600;font-size:13px;">Search Student *</label>
+            <input type="text" id="loa_student_search" style="width:100%;" placeholder="Type student number, first name, or last name..." autocomplete="off">
+            <div id="loa_student_dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #e5e7eb;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:10;max-height:240px;overflow-y:auto;"></div>
+            <input type="hidden" id="loa_student_no" name="student_no" value="">
+            <input type="hidden" id="loa_student_id" name="student_id" value="0">
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
             <div><label style="font-size:13px;font-weight:600;">Name</label><input type="text" id="loa_student_name" readonly style="width:100%;background:#f1f5f9;"></div>
             <div><label style="font-size:13px;font-weight:600;">Program</label><input type="text" id="loa_student_program" readonly style="width:100%;background:#f1f5f9;"></div>
-            <input type="hidden" id="loa_student_id" name="student_id" value="0">
             <input type="hidden" id="loa_program_id" name="program_id" value="">
             <input type="hidden" id="loa_department_id" name="department_id" value="">
         </div>
@@ -437,24 +436,55 @@ ob_start();
 <?php endif; ?>
 
 <script>
-function searchStudent() {
-    var sno = document.getElementById('loa_student_no').value.trim();
-    if (!sno) return;
-    fetch('api/student_search.php?student_no=' + encodeURIComponent(sno))
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-            if (d && d.id) {
-                document.getElementById('loa_student_id').value = d.id;
-                document.getElementById('loa_student_name').value = d.full_name || '';
-                document.getElementById('loa_student_program').value = d.program_name || '';
-                document.getElementById('loa_program_id').value = d.program_id || '';
-                document.getElementById('loa_department_id').value = d.department_id || '';
-            } else {
-                alert('Student not found.');
-            }
-        })
-        .catch(function() { alert('Search failed.'); });
-}
+(function() {
+    var input = document.getElementById('loa_student_search');
+    var dropdown = document.getElementById('loa_student_dropdown');
+    var timer = null;
+
+    input.addEventListener('input', function() {
+        clearTimeout(timer);
+        var q = this.value.trim();
+        if (q.length < 2) { dropdown.style.display = 'none'; return; }
+        timer = setTimeout(function() {
+            fetch('api/student_search.php?q=' + encodeURIComponent(q))
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (!data || data.length === 0) {
+                        dropdown.innerHTML = '<div style="padding:12px;color:#94a3b8;text-align:center;font-size:13px;">No students found</div>';
+                        dropdown.style.display = 'block';
+                        return;
+                    }
+                    var html = '';
+                    for (var i = 0; i < data.length; i++) {
+                        var s = data[i];
+                        html += '<div class="loa-student-option" data-id="' + s.id + '" data-sno="' + s.student_number + '" data-name="' + (s.full_name||'').replace(/"/g,'&quot;') + '" data-program="' + (s.program_name||'').replace(/"/g,'&quot;') + '" data-pid="' + (s.program_id||'') + '" data-did="' + (s.department_id||'') + '" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:13px;">' +
+                            '<strong>' + s.student_number + '</strong> &mdash; ' + (s.full_name||'') +
+                            '<div style="font-size:11px;color:#64748b;">' + (s.program_name||'') + '</div></div>';
+                    }
+                    dropdown.innerHTML = html;
+                    dropdown.style.display = 'block';
+                    var opts = dropdown.querySelectorAll('.loa-student-option');
+                    for (var j = 0; j < opts.length; j++) {
+                        opts[j].addEventListener('click', function() {
+                            document.getElementById('loa_student_id').value = this.dataset.id;
+                            document.getElementById('loa_student_no').value = this.dataset.sno;
+                            document.getElementById('loa_student_name').value = this.dataset.name;
+                            document.getElementById('loa_student_program').value = this.dataset.program;
+                            document.getElementById('loa_program_id').value = this.dataset.pid;
+                            document.getElementById('loa_department_id').value = this.dataset.did;
+                            input.value = this.dataset.sno + ' — ' + this.dataset.name;
+                            dropdown.style.display = 'none';
+                        });
+                    }
+                })
+                .catch(function() { dropdown.style.display = 'none'; });
+        }, 250);
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!dropdown.contains(e.target) && e.target !== input) dropdown.style.display = 'none';
+    });
+})();
 </script>
 <?php
 render_page('Leave of Absence', 'Leave of Absence', (string) ob_get_clean());
